@@ -1,0 +1,72 @@
+# Simple Test Case - for verifying sniffbench works
+# This case should pass to demonstrate the evaluation flow
+
+id: simple-001
+title: "Simple math test"
+description: |
+  A simple test case that verifies basic functionality.
+  The provided code should pass the test - this is used to
+  verify that sniffbench evaluation is working correctly.
+
+category: smoke-test
+language: node
+difficulty: easy
+tags:
+  - smoke-test
+  - verification
+
+# Simple JavaScript file with a function
+files:
+  - path: math.js
+    content: |
+      function add(a, b) {
+        return a + b;
+      }
+
+      function multiply(a, b) {
+        return a * b;
+      }
+
+      module.exports = { add, multiply };
+
+  - path: math.test.js
+    content: |
+      const { add, multiply } = require('./math');
+
+      // Simple test runner
+      let passed = 0;
+      let failed = 0;
+
+      function test(name, fn) {
+        try {
+          fn();
+          console.log(`✓ ${name}`);
+          passed++;
+        } catch (err) {
+          console.log(`✗ ${name}: ${err.message}`);
+          failed++;
+        }
+      }
+
+      function assertEqual(actual, expected) {
+        if (actual !== expected) {
+          throw new Error(`Expected ${expected}, got ${actual}`);
+        }
+      }
+
+      // Tests
+      test('add(1, 2) equals 3', () => assertEqual(add(1, 2), 3));
+      test('add(-1, 1) equals 0', () => assertEqual(add(-1, 1), 0));
+      test('multiply(2, 3) equals 6', () => assertEqual(multiply(2, 3), 6));
+      test('multiply(0, 5) equals 0', () => assertEqual(multiply(0, 5), 0));
+
+      // Summary
+      console.log(`\n${passed} passed, ${failed} failed`);
+      process.exit(failed > 0 ? 1 : 0);
+
+validation:
+  type: test_suite
+  command: node math.test.js
+
+scoring:
+  correctness: 100

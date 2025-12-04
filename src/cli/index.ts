@@ -9,6 +9,7 @@ import { compareCommand } from './commands/compare';
 import { reportCommand } from './commands/report';
 import { casesCommand } from './commands/cases';
 import { statusCommand } from './commands/status';
+import { doctorCommand } from './commands/doctor';
 
 const program = new Command();
 
@@ -29,7 +30,9 @@ program
   .option('--agent <name>', 'Agent to evaluate (claude-code, cursor, aider)', 'claude-code')
   .option('--cases <cases>', 'Specific test cases to run (comma-separated)')
   .option('--output <dir>', 'Output directory for results', 'results')
-  .action(runCommand);
+  .option('--timeout <seconds>', 'Timeout per case in seconds', '300')
+  .option('--network', 'Enable network access in sandbox (disabled by default)')
+  .action((opts) => runCommand({ ...opts, timeout: parseInt(opts.timeout, 10) }));
 
 program
   .command('add')
@@ -60,5 +63,10 @@ program
   .command('status')
   .description('Show sniffbench status and configuration')
   .action(statusCommand);
+
+program
+  .command('doctor')
+  .description('Run diagnostics and check system requirements')
+  .action(doctorCommand);
 
 program.parse();

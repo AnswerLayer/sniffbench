@@ -45,3 +45,4 @@ coverage/
 .env
 .env.local
 local_config.yaml
+results/

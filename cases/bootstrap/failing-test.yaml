@@ -1,0 +1,39 @@
+# Failing Test Case - verifies failure handling
+# This case should FAIL to demonstrate error reporting
+
+id: fail-001
+title: "Intentionally failing test"
+description: |
+  This test case intentionally fails to verify that
+  sniffbench correctly reports failures.
+
+category: smoke-test
+language: node
+difficulty: easy
+tags:
+  - smoke-test
+  - failure-test
+
+files:
+  - path: broken.js
+    content: |
+      function brokenAdd(a, b) {
+        return a - b;  // Bug: subtracts instead of adds!
+      }
+      module.exports = { brokenAdd };
+
+  - path: broken.test.js
+    content: |
+      const { brokenAdd } = require('./broken');
+
+      // This test will fail because brokenAdd is buggy
+      const result = brokenAdd(2, 3);
+      if (result !== 5) {
+        console.error(`Test failed: brokenAdd(2, 3) returned ${result}, expected 5`);
+        process.exit(1);
+      }
+      console.log('Test passed');
+
+validation:
+  type: test_suite
+  command: node broken.test.js

@@ -6,3 +6,13 @@ export { compareCommand } from './cli/commands/compare';
 export { reportCommand } from './cli/commands/report';
 export { casesCommand } from './cli/commands/cases';
 export { statusCommand } from './cli/commands/status';
+export { doctorCommand } from './cli/commands/doctor';
+
+// Sandbox module for programmatic use
+export * from './sandbox';
+
+// Cases module for programmatic use
+export * from './cases';
+
+// Evaluation module for programmatic use
+export * from './evaluation';
