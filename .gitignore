@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+pnpm-debug.log*
+
+# Lock files (keep pnpm-lock.yaml, ignore others)
+package-lock.json
+yarn.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Generated
+cases/generated/
+*.log
+.cache/
+
+# Docker
+*.tar
+*.tar.gz
+
+# Test results
+.pytest_cache/
+.coverage
+htmlcov/
+test-results/
+coverage/
+
+# Local config
+.env
+.env.local
+local_config.yaml
