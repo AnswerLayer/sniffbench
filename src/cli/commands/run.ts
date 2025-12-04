@@ -3,7 +3,8 @@ import ora from 'ora';
 import * as fs from 'fs';
 import * as path from 'path';
 import { box } from '../../utils/ui';
-import { loadCases, getDefaultCasesDir, CaseResult } from '../../cases';
+import { loadCases, getDefaultCasesDir } from '../../cases';
+import { CaseResult } from '../../cases/types';
 import { runCases, ProgressUpdate } from '../../evaluation';
 import { checkDocker } from '../../sandbox';
 
@@ -85,14 +86,15 @@ export async function runCommand(options: RunOptions) {
 
   const onCaseComplete = (result: CaseResult) => {
     if (currentSpinner) {
+      const scorePercent = Math.round(result.score * 100);
       if (result.passed) {
-        currentSpinner.succeed(`${result.caseId}: ${chalk.green('PASSED')} (${formatDuration(result.durationMs)})`);
+        currentSpinner.succeed(`${result.caseId}: ${chalk.green('PASSED')} (${scorePercent}%, ${formatDuration(result.durationMs)})`);
       } else if (result.timedOut) {
         currentSpinner.fail(`${result.caseId}: ${chalk.yellow('TIMEOUT')}`);
       } else if (result.error) {
         currentSpinner.fail(`${result.caseId}: ${chalk.red('ERROR')} - ${result.error}`);
       } else {
-        currentSpinner.fail(`${result.caseId}: ${chalk.red('FAILED')} (exit code ${result.exitCode})`);
+        currentSpinner.fail(`${result.caseId}: ${chalk.red('FAILED')} (${scorePercent}%)`);
       }
       currentSpinner = null;
     }
@@ -109,16 +111,17 @@ export async function runCommand(options: RunOptions) {
 
     // Display summary
     console.log('');
+    const averageScorePercent = Math.round(result.summary.averageScore * 100);
     const summaryLines = [
       chalk.bold('Run Summary\n'),
       `Run ID: ${chalk.cyan(result.runId)}`,
-      `Duration: ${formatDuration(result.completedAt.getTime() - result.startedAt.getTime())}`,
+      `Duration: ${formatDuration(result.summary.totalDurationMs)}`,
       '',
       `${chalk.green('✓')} Passed: ${result.summary.passed}`,
       `${chalk.red('✗')} Failed: ${result.summary.failed}`,
       result.summary.timedOut > 0 ? `${chalk.yellow('⏱')} Timed out: ${result.summary.timedOut}` : null,
       '',
-      chalk.bold(`Score: ${Math.round((result.summary.passed / result.summary.total) * 100)}%`),
+      chalk.bold(`Average Score: ${averageScorePercent}%`),
     ].filter(Boolean);
 
     console.log(box(summaryLines.join('\n'), 'Results'));

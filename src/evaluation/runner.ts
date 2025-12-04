@@ -1,13 +1,27 @@
 /**
- * Evaluation runner - executes cases in sandboxes
+ * Evaluation runner - executes cases in sandboxes and evaluates results
+ *
+ * This is the core evaluation engine that:
+ * 1. Sets up the sandbox environment
+ * 2. Runs the case (agent attempts to solve the problem)
+ * 3. Applies the rubric to evaluate the result
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { Case, CaseResult, RunResult } from '../cases/types';
+import {
+  Case,
+  CaseResult,
+  CriterionResult,
+  EvaluatorResult,
+  RunResult,
+  RunSummary,
+  EvaluatorType,
+} from '../cases/types';
 import { createSandboxManager, checkDocker, RECOMMENDED_IMAGES } from '../sandbox';
 import { Sandbox, SandboxConfig } from '../sandbox/types';
+import { getRubricRegistry } from '../rubrics/loader';
 
 export interface RunnerOptions {
   /** Agent being evaluated (for logging) */
@@ -75,6 +89,7 @@ export async function runCases(cases: Case[], options: RunnerOptions): Promise<R
   }
 
   const manager = createSandboxManager();
+  let runRubricId = 'default';
 
   try {
     for (let i = 0; i < cases.length; i++) {
@@ -92,16 +107,22 @@ export async function runCases(cases: Case[], options: RunnerOptions): Promise<R
         const result = await runSingleCase(caseData, manager, options, i, cases.length);
         results.push(result);
         options.onCaseComplete?.(result);
+        // Track the rubric ID from the first case
+        if (i === 0) {
+          const registry = getRubricRegistry();
+          const rubric = registry.resolve(caseData.rubric);
+          runRubricId = rubric.id;
+        }
       } catch (err) {
         const errorResult: CaseResult = {
           caseId: caseData.id,
+          score: 0,
           passed: false,
-          exitCode: 1,
-          stdout: '',
-          stderr: '',
+          criteriaResults: [],
           durationMs: 0,
           timedOut: false,
           error: (err as Error).message,
+          timestamp: new Date(),
         };
         results.push(errorResult);
         options.onCaseComplete?.(errorResult);
@@ -113,14 +134,20 @@ export async function runCases(cases: Case[], options: RunnerOptions): Promise<R
   }
 
   const completedAt = new Date();
+  const totalDurationMs = completedAt.getTime() - startedAt.getTime();
 
   // Calculate summary
-  const summary = {
+  const scores = results.map((r) => r.score);
+  const averageScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+
+  const summary: RunSummary = {
     total: results.length,
     passed: results.filter((r) => r.passed).length,
-    failed: results.filter((r) => !r.passed && !r.timedOut).length,
+    failed: results.filter((r) => !r.passed && !r.error).length,
     skipped: 0,
     timedOut: results.filter((r) => r.timedOut).length,
+    averageScore,
+    totalDurationMs,
   };
 
   return {
@@ -128,6 +155,7 @@ export async function runCases(cases: Case[], options: RunnerOptions): Promise<R
     startedAt,
     completedAt,
     agent: options.agent,
+    rubricId: runRubricId,
     caseResults: results,
     summary,
   };
@@ -149,14 +177,18 @@ async function runSingleCase(
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `sniff-${caseData.id}-`));
 
   try {
-    // Write case files to temp directory
-    for (const file of caseData.files) {
-      const filePath = path.join(tempDir, file.path);
-      const fileDir = path.dirname(filePath);
+    // Write case files to temp directory (if any)
+    if (caseData.files) {
+      for (const file of caseData.files) {
+        const filePath = path.join(tempDir, file.path);
+        const fileDir = path.dirname(filePath);
 
-      // Create directories if needed
-      fs.mkdirSync(fileDir, { recursive: true });
-      fs.writeFileSync(filePath, file.content);
+        // Create directories if needed
+        fs.mkdirSync(fileDir, { recursive: true });
+        if (file.content !== undefined) {
+          fs.writeFileSync(filePath, file.content);
+        }
+      }
     }
 
     // Create sandbox
@@ -179,54 +211,32 @@ async function runSingleCase(
 
     try {
       // Install dependencies if needed
-      await installDependencies(sandbox, caseData.language, options, caseIndex, totalCases);
+      await installDependencies(sandbox, caseData.language, options, caseIndex, totalCases, caseData.id);
 
-      // Run validation
+      // Evaluate using the rubric
       options.onProgress?.({
         type: 'validating',
         caseId: caseData.id,
         caseIndex,
         totalCases,
-        message: `Running: ${caseData.validation.command}`,
+        message: 'Evaluating with rubric...',
       });
 
-      const result = await sandbox.exec(caseData.validation.command, {
-        timeoutSeconds: options.timeoutSeconds || 300,
-      });
-
+      const result = await evaluateWithRubric(caseData, sandbox, options);
       const durationMs = Date.now() - startTime;
-
-      // Determine if passed based on validation type
-      let passed = false;
-      if (caseData.validation.type === 'test_suite') {
-        // For test suites, exit code 0 means all tests passed
-        passed = result.exitCode === 0;
-      } else if (caseData.validation.type === 'output_match') {
-        // For output matching, check if expected output is in stdout
-        passed = caseData.validation.expectedOutput
-          ? result.stdout.includes(caseData.validation.expectedOutput)
-          : result.exitCode === 0;
-      } else {
-        // For custom, just check exit code
-        passed = result.exitCode === 0;
-      }
 
       options.onProgress?.({
         type: 'complete',
         caseId: caseData.id,
         caseIndex,
         totalCases,
-        message: passed ? 'Passed' : 'Failed',
+        message: result.passed ? `Passed (${(result.score * 100).toFixed(0)}%)` : `Failed (${(result.score * 100).toFixed(0)}%)`,
       });
 
       return {
-        caseId: caseData.id,
-        passed,
-        exitCode: result.exitCode,
-        stdout: result.stdout,
-        stderr: result.stderr,
+        ...result,
         durationMs,
-        timedOut: result.timedOut,
+        timestamp: new Date(),
       };
     } finally {
       await sandbox.destroy();
@@ -242,6 +252,130 @@ async function runSingleCase(
 }
 
 /**
+ * Evaluate a case using its rubric
+ */
+async function evaluateWithRubric(
+  caseData: Case,
+  sandbox: Sandbox,
+  _options: RunnerOptions
+): Promise<Omit<CaseResult, 'durationMs' | 'timestamp'>> {
+  const registry = getRubricRegistry();
+  const rubric = registry.resolve(caseData.rubric);
+
+  const criteriaResults: CriterionResult[] = [];
+  let totalWeightedScore = 0;
+  let totalWeight = 0;
+
+  // Evaluate each criterion in the rubric
+  for (const [criterionKey, criterion] of Object.entries(rubric.criteria)) {
+    const evaluatorResults: EvaluatorResult[] = [];
+    let criterionScore = 0;
+    let evaluatorCount = 0;
+
+    for (const evaluator of criterion.evaluators) {
+      const evalStartTime = Date.now();
+      let evalResult: Omit<EvaluatorResult, 'name' | 'type' | 'durationMs'>;
+
+      if (evaluator.type === 'command') {
+        // Run command evaluator
+        const result = await sandbox.exec(evaluator.run, {
+          timeoutSeconds: 60,
+        });
+
+        const passed = result.exitCode === 0;
+        let score = passed ? 1.0 : 0.0;
+
+        // Handle partial credit
+        if (evaluator.partialCredit && !passed) {
+          // For test runners, try to parse pass/fail ratio
+          const testMatch = result.stdout.match(/(\d+) passed/);
+          const failMatch = result.stdout.match(/(\d+) failed/);
+          if (testMatch && failMatch) {
+            const passedTests = parseInt(testMatch[1], 10);
+            const failedTests = parseInt(failMatch[1], 10);
+            const total = passedTests + failedTests;
+            if (total > 0) {
+              score = passedTests / total;
+            }
+          }
+        }
+
+        evalResult = {
+          passed,
+          score,
+          evidence: (result.stdout + '\n' + result.stderr).trim(),
+          details: {
+            exitCode: result.exitCode,
+            timedOut: result.timedOut,
+          },
+        };
+      } else if (evaluator.type === 'pattern') {
+        // Run pattern evaluator (check for matches in files)
+        // For now, just pass - full implementation will use grep/find
+        evalResult = {
+          passed: true,
+          score: 1.0,
+          evidence: 'Pattern check not fully implemented',
+        };
+      } else {
+        // Other evaluator types (llm_judge, benchmark, etc.) - placeholder
+        evalResult = {
+          passed: true,
+          score: 1.0,
+          evidence: 'Evaluator type not yet implemented',
+        };
+      }
+
+      const evalDurationMs = Date.now() - evalStartTime;
+
+      evaluatorResults.push({
+        name: evaluator.name || evaluator.type,
+        type: evaluator.type as EvaluatorType,
+        durationMs: evalDurationMs,
+        ...evalResult,
+      });
+
+      if (!evaluator.optional) {
+        criterionScore += evalResult.score;
+        evaluatorCount++;
+      }
+    }
+
+    // Average score for this criterion
+    const rawScore = evaluatorCount > 0 ? criterionScore / evaluatorCount : 1.0;
+    const weightedScore = (rawScore * criterion.weight) / 100;
+    const allPassed = evaluatorResults.filter((e) => !e.passed).length === 0;
+
+    criteriaResults.push({
+      name: criterionKey,
+      weight: criterion.weight,
+      score: rawScore,
+      weightedScore,
+      passed: allPassed,
+      evaluatorResults,
+    });
+
+    totalWeightedScore += weightedScore;
+    totalWeight += criterion.weight;
+  }
+
+  // Calculate overall score (sum of weighted scores, as percentage)
+  const overallScore = totalWeightedScore * 100;
+
+  // Determine pass/fail (default threshold: 70%)
+  const passThreshold = 70;
+  const passed = overallScore >= passThreshold;
+
+  return {
+    caseId: caseData.id,
+    score: overallScore,
+    passed,
+    criteriaResults,
+    timedOut: false,
+  };
+}
+
+/**
  * Install dependencies based on language
  */
 async function installDependencies(
@@ -249,13 +383,14 @@ async function installDependencies(
   language: string,
   options: RunnerOptions,
   caseIndex: number,
-  totalCases: number
+  totalCases: number,
+  caseId: string
 ): Promise<void> {
   const langLower = language.toLowerCase();
 
   options.onProgress?.({
     type: 'running',
-    caseId: '',
+    caseId,
     caseIndex,
     totalCases,
     message: 'Installing dependencies...',

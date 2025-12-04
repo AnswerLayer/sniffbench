@@ -7,7 +7,12 @@ import { runCommand } from './commands/run';
 import { addCommand } from './commands/add';
 import { compareCommand } from './commands/compare';
 import { reportCommand } from './commands/report';
-import { casesCommand } from './commands/cases';
+import {
+  casesListCommand,
+  casesShowCommand,
+  casesCategoriesCommand,
+  casesLanguagesCommand,
+} from './commands/cases';
 import { statusCommand } from './commands/status';
 import { doctorCommand } from './commands/doctor';
 
@@ -54,10 +59,42 @@ program
   .option('--output <file>', 'Output file path')
   .action(reportCommand);
 
-program
+// Cases command with subcommands
+const casesCmd = program
   .command('cases')
-  .description('List available test cases')
-  .action(casesCommand);
+  .description('Manage and view test cases');
+
+casesCmd
+  .command('list')
+  .description('List all test cases')
+  .option('-c, --category <category>', 'Filter by category')
+  .option('-l, --language <language>', 'Filter by language')
+  .option('-d, --difficulty <difficulty>', 'Filter by difficulty (easy, medium, hard)')
+  .option('-s, --source <source>', 'Filter by source (bootstrap, generated, manual, imported)')
+  .option('-t, --tags <tags...>', 'Filter by tags')
+  .option('--json', 'Output as JSON')
+  .action(casesListCommand);
+
+casesCmd
+  .command('show')
+  .description('Show details of a specific case')
+  .argument('<id>', 'Case ID')
+  .option('--json', 'Output as JSON')
+  .option('-e, --edit', 'Open in editor ($EDITOR or vim)')
+  .action((id, opts) => casesShowCommand({ id, ...opts }));
+
+casesCmd
+  .command('categories')
+  .description('List available categories')
+  .action(casesCategoriesCommand);
+
+casesCmd
+  .command('languages')
+  .description('List available languages')
+  .action(casesLanguagesCommand);
+
+// Default to list if no subcommand
+casesCmd.action(() => casesListCommand({}));
 
 program
   .command('status')

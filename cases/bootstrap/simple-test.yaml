@@ -3,14 +3,18 @@
 
 id: simple-001
 title: "Simple math test"
-description: |
+prompt: |
   A simple test case that verifies basic functionality.
   The provided code should pass the test - this is used to
   verify that sniffbench evaluation is working correctly.
 
+  Run the tests and ensure they all pass.
+
+source: bootstrap
 category: smoke-test
-language: node
+language: javascript
 difficulty: easy
+
 tags:
   - smoke-test
   - verification
@@ -64,9 +68,4 @@ files:
       console.log(`\n${passed} passed, ${failed} failed`);
       process.exit(failed > 0 ? 1 : 0);
 
-validation:
-  type: test_suite
-  command: node math.test.js
-
-scoring:
-  correctness: 100
+# Uses default rubric (correctness, quality, safety, performance, maintainability)

@@ -3,13 +3,18 @@
 
 id: fail-001
 title: "Intentionally failing test"
-description: |
+prompt: |
   This test case intentionally fails to verify that
   sniffbench correctly reports failures.
 
+  The code has a bug - brokenAdd subtracts instead of adds.
+  Run the tests to see the failure.
+
+source: bootstrap
 category: smoke-test
-language: node
+language: javascript
 difficulty: easy
+
 tags:
   - smoke-test
   - failure-test
@@ -34,6 +39,4 @@ files:
       }
       console.log('Test passed');
 
-validation:
-  type: test_suite
-  command: node broken.test.js
+# Uses default rubric - this case is expected to fail
