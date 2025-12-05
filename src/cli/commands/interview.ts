@@ -160,7 +160,7 @@ Please answer the following question by exploring the codebase:
 
 ${caseData.prompt}
 
-Take your time to explore and provide a thorough, accurate answer with specific file references where relevant.`;
+Be concise but accurate. Focus on the key points with specific file references where relevant. Aim for a clear, well-organized answer that a developer could quickly scan.`;
 
   const result = await agent.run(prompt, {
     cwd,
@@ -195,38 +195,37 @@ async function runInterviewQuestion(
     }
   }
 
-  // Get agent's response
-  const spinner = ora(`${agent.displayName} is exploring the codebase...`).start();
+  // Get agent's response - stream output live
+  console.log(chalk.dim(`\n  ${agent.displayName} is exploring...\n`));
+  console.log(chalk.dim('  ─────────────────────────────────────────\n'));
+
+  let outputStarted = false;
+  const startTime = Date.now();
 
   try {
     const result = await getAgentResponse(caseData, agent, projectRoot, (chunk) => {
-      // Update spinner with progress indication
-      const lines = chunk.split('\n').filter(l => l.trim());
-      if (lines.length > 0) {
-        const lastLine = lines[lines.length - 1].slice(0, 50);
-        spinner.text = `${agent.displayName} is working... ${chalk.dim(lastLine)}`;
+      // Stream output directly to console
+      if (!outputStarted) {
+        outputStarted = true;
       }
+      process.stdout.write(chunk);
     });
 
+    const durationSec = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(chalk.dim('\n\n  ─────────────────────────────────────────'));
+
     if (result.timedOut) {
-      spinner.fail(`${agent.displayName} timed out`);
-      console.log(chalk.yellow('\n  The agent took too long. Consider increasing the timeout.'));
+      console.log(chalk.yellow(`\n  ✗ ${agent.displayName} timed out after ${durationSec}s`));
+      console.log(chalk.yellow('  The agent took too long. Consider increasing the timeout.'));
       return { grade: 0, skipped: true, durationMs: result.durationMs };
     }
 
     if (!result.success) {
-      spinner.fail(`${agent.displayName} failed: ${result.error}`);
+      console.log(chalk.red(`\n  ✗ ${agent.displayName} failed: ${result.error}`));
       return { grade: 0, skipped: true, durationMs: result.durationMs };
     }
 
-    const durationSec = (result.durationMs / 1000).toFixed(1);
-    spinner.succeed(`${agent.displayName} completed in ${durationSec}s`);
-
-    // Display the answer
-    console.log(chalk.dim('\n  ─────────────────────────────────────────'));
-    console.log(chalk.bold('  Agent\'s Answer:\n'));
-    console.log(formatAnswer(result.answer).split('\n').map(l => '  ' + l).join('\n'));
-    console.log(chalk.dim('\n  ─────────────────────────────────────────'));
+    console.log(chalk.green(`\n  ✓ ${agent.displayName} completed in ${durationSec}s`));
 
     // Show tools used if available
     if (result.toolsUsed && result.toolsUsed.length > 0) {
@@ -257,7 +256,7 @@ async function runInterviewQuestion(
 
     return { grade, skipped: false, durationMs: result.durationMs };
   } catch (err) {
-    spinner.fail(`Failed: ${(err as Error).message}`);
+    console.log(chalk.red(`\n  ✗ Failed: ${(err as Error).message}`));
     return { grade: 0, skipped: true };
   }
 }

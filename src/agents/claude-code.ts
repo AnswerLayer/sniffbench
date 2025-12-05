@@ -75,8 +75,10 @@ export class ClaudeCodeAgent implements AgentWrapper {
     return new Promise((resolve) => {
       // Build command args
       // -p: print mode (non-interactive, single prompt)
-      // --output-format: get structured output if available
-      const args = ['-p', prompt];
+      // --output-format stream-json: get real-time streaming JSON output
+      // --verbose: required for stream-json
+      // --include-partial-messages: stream text as it's generated
+      const args = ['-p', prompt, '--output-format', 'stream-json', '--verbose', '--include-partial-messages'];
 
       const proc = spawn(this.cliPath, args, {
         cwd: options.cwd,
@@ -86,21 +88,49 @@ export class ClaudeCodeAgent implements AgentWrapper {
           // Ensure non-interactive
           CI: 'true',
         },
-        timeout: timeoutMs,
+        stdio: ['pipe', 'pipe', 'pipe'],
       });
+
+      // Close stdin immediately - claude -p doesn't need interactive input
+      proc.stdin?.end();
 
       let stdout = '';
       let stderr = '';
       let timedOut = false;
+      let finalAnswer = '';
+      let lineBuffer = '';
 
       proc.stdout?.on('data', (data) => {
         const chunk = data.toString();
         stdout += chunk;
-        options.onOutput?.(chunk);
+
+        // Parse streaming JSON - each line is a JSON object
+        lineBuffer += chunk;
+        const lines = lineBuffer.split('\n');
+        lineBuffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const msg = JSON.parse(line);
+            const displayText = this.extractDisplayText(msg);
+            if (displayText && options.onOutput) {
+              options.onOutput(displayText);
+            }
+            // Capture final answer from result
+            if (msg.type === 'result' && msg.result) {
+              finalAnswer = msg.result;
+            }
+          } catch {
+            // Not valid JSON, output raw
+            options.onOutput?.(line + '\n');
+          }
+        }
       });
 
       proc.stderr?.on('data', (data) => {
-        stderr += data.toString();
+        const chunk = data.toString();
+        stderr += chunk;
       });
 
       // Handle timeout
@@ -117,15 +147,11 @@ export class ClaudeCodeAgent implements AgentWrapper {
         clearTimeout(timer);
         const durationMs = Date.now() - startTime;
 
-        // Parse the output to extract the answer
-        // Claude Code's -p mode outputs the response directly
-        const answer = this.parseAnswer(stdout);
-
-        // Try to extract tool usage from output
-        const toolsUsed = this.parseToolsUsed(stdout);
+        // Try to extract tool usage from JSON output
+        const toolsUsed = this.parseToolsUsedFromJson(stdout);
 
         resolve({
-          answer,
+          answer: finalAnswer || this.parseAnswer(stdout),
           success: code === 0 && !timedOut,
           error: timedOut ? 'Timed out' : (code !== 0 ? `Exit code: ${code}` : undefined),
           timedOut,
@@ -168,27 +194,114 @@ export class ClaudeCodeAgent implements AgentWrapper {
   }
 
   /**
-   * Parse tools used from output
-   *
-   * Claude Code shows tool usage in its output. Try to extract them.
+   * Extract displayable text from a stream-json message
    */
-  private parseToolsUsed(stdout: string): string[] {
+  private extractDisplayText(msg: Record<string, unknown>): string | null {
+    // Handle streaming text deltas (with --include-partial-messages)
+    if (msg.type === 'stream_event') {
+      const event = msg.event as Record<string, unknown> | undefined;
+      if (event?.type === 'content_block_delta') {
+        const delta = event.delta as Record<string, unknown> | undefined;
+        if (delta?.type === 'text_delta' && typeof delta.text === 'string') {
+          return delta.text;
+        }
+      }
+      // Ignore content_block_start - we'll show details from assistant message
+    }
+
+    // Handle complete assistant messages with tool details
+    if (msg.type === 'assistant' && msg.message) {
+      const message = msg.message as Record<string, unknown>;
+      const content = message.content as Array<Record<string, unknown>> | undefined;
+      if (content && Array.isArray(content)) {
+        const textParts: string[] = [];
+        for (const part of content) {
+          if (part.type === 'tool_use') {
+            const input = part.input as Record<string, unknown> | undefined;
+            const formatted = this.formatToolCall(part.name as string, input);
+            if (formatted) {
+              textParts.push(formatted);
+            }
+          }
+        }
+        if (textParts.length > 0) {
+          return '\n' + textParts.join('\n') + '\n';
+        }
+      }
+    }
+
+    // Handle tool results - just show checkmark, skip content
+    if (msg.type === 'user') {
+      const toolResult = msg.tool_use_result as Record<string, unknown> | undefined;
+      if (toolResult) {
+        return null; // Don't show tool results - too noisy
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Format a tool call for display
+   */
+  private formatToolCall(name: string, input: Record<string, unknown> | undefined): string | null {
+    if (!input) return `  › ${name}`;
+
+    const dim = '\x1b[2m'; // dim
+    const reset = '\x1b[0m';
+
+    switch (name) {
+      case 'Read': {
+        const path = (input.file_path as string || '').split('/').slice(-2).join('/');
+        return `  › Read ${dim}${path}${reset}`;
+      }
+      case 'Glob': {
+        return `  › Glob ${dim}${input.pattern || ''}${reset}`;
+      }
+      case 'Grep': {
+        return `  › Grep ${dim}"${input.pattern || ''}"${reset}`;
+      }
+      case 'Bash': {
+        const cmd = (input.command as string || '').substring(0, 50);
+        const truncated = (input.command as string || '').length > 50 ? '...' : '';
+        return `  › Bash ${dim}${cmd}${truncated}${reset}`;
+      }
+      case 'Edit':
+      case 'Write': {
+        const path = (input.file_path as string || '').split('/').slice(-2).join('/');
+        return `  › ${name} ${dim}${path}${reset}`;
+      }
+      case 'Task': {
+        return `  › Task ${dim}${input.description || ''}${reset}`;
+      }
+      default:
+        return `  › ${name}`;
+    }
+  }
+
+  /**
+   * Parse tools used from JSON output
+   */
+  private parseToolsUsedFromJson(stdout: string): string[] {
     const tools: Set<string> = new Set();
 
-    // Look for common tool patterns in Claude Code output
-    const toolPatterns = [
-      /Read\s+\S+/g,        // Read file
-      /Edit\s+\S+/g,        // Edit file
-      /Write\s+\S+/g,       // Write file
-      /Bash\s*\([^)]+\)/g,  // Bash command
-      /Grep\s+\S+/g,        // Grep search
-      /Glob\s+\S+/g,        // Glob search
-    ];
-
-    for (const pattern of toolPatterns) {
-      const matches = stdout.match(pattern);
-      if (matches) {
-        matches.forEach((m) => tools.add(m.split(/\s+/)[0]));
+    const lines = stdout.split('\n');
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const msg = JSON.parse(line);
+        if (msg.type === 'assistant' && msg.message) {
+          const content = msg.message.content;
+          if (Array.isArray(content)) {
+            for (const part of content) {
+              if (part.type === 'tool_use' && part.name) {
+                tools.add(part.name);
+              }
+            }
+          }
+        }
+      } catch {
+        // Skip invalid JSON lines
       }
     }
 
