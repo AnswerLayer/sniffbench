@@ -1,0 +1,53 @@
+# Comprehension Case: Code Standards
+# Tests whether the agent understands the project's quality standards
+
+id: comp-004
+title: "Code Standards and Quality"
+type: comprehension
+
+prompt: |
+  Help me understand the code quality standards in this project:
+
+  - Is there linting configured? What rules does it enforce?
+  - Is there code formatting (Prettier, Black, gofmt)?
+  - Are there tests? What framework and patterns are used?
+  - Are there type checks (TypeScript, mypy, etc.)?
+  - How do I run these checks locally?
+
+  What would I need to do to make sure my code meets this project's
+  standards before submitting?
+
+source: bootstrap
+category: comprehension
+language: any
+difficulty: easy
+
+tags:
+  - quality
+  - linting
+  - testing
+  - standards
+
+files: []
+
+rubric: comprehension
+
+expectations:
+  maxTimeSeconds: 300
+  maxTokens: 80000
+  allowedTools:
+    - read
+    - grep
+    - glob
+    - search
+
+notes: |
+  A good answer will:
+  - Identify configured linters and their config files
+  - Explain formatting rules/tools
+  - Describe the testing setup (if any)
+  - Show how to run quality checks
+  - Note any pre-commit hooks or CI checks
+
+  If some of these aren't configured, that's a valid answer too -
+  the agent should recognize what's present vs missing.

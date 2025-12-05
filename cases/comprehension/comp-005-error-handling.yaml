@@ -1,0 +1,48 @@
+# Comprehension Case: Error Handling
+# Tests whether the agent understands how errors propagate
+
+id: comp-005
+title: "Error Handling Patterns"
+type: comprehension
+
+prompt: |
+  Explain how errors are handled in this codebase:
+
+  - When something goes wrong deep in the code, how does the error
+    bubble up to the user?
+  - Are there custom error types or classes?
+  - How are errors logged?
+  - What does the client/user see when an error occurs?
+  - Is there any error monitoring or alerting?
+
+source: bootstrap
+category: comprehension
+language: any
+difficulty: medium
+
+tags:
+  - architecture
+  - error-handling
+  - observability
+
+files: []
+
+rubric: comprehension
+
+expectations:
+  maxTimeSeconds: 300
+  maxTokens: 80000
+  allowedTools:
+    - read
+    - grep
+    - glob
+    - search
+
+notes: |
+  A good answer will:
+  - Identify the error handling strategy (throw/catch, Result types, etc.)
+  - Show how errors are transformed at boundaries
+  - Note any custom error classes
+  - Explain logging and monitoring
+  - Show what API responses look like for errors
+  - Respect existing styles and choices

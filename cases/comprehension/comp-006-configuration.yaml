@@ -1,0 +1,45 @@
+# Comprehension Case: Configuration
+# Tests whether the agent understands environment and config management
+
+id: comp-006
+title: "Configuration Management"
+type: comprehension
+
+prompt: |
+  How is this application configured for different environments?
+
+  - Where do configuration values come from (env vars, files, etc.)?
+  - How does the code access configuration?
+  - What's different between development, staging, and production?
+  - Are there any secrets? How are they managed?
+
+source: bootstrap
+category: comprehension
+language: any
+difficulty: easy
+
+tags:
+  - configuration
+  - environments
+  - devops
+
+files: []
+
+rubric: comprehension
+
+expectations:
+  maxTimeSeconds: 240
+  maxTokens: 60000
+  allowedTools:
+    - read
+    - grep
+    - glob
+    - search
+
+notes: |
+  A good answer will:
+  - Identify config sources (.env, config files, env vars)
+  - Show how config is accessed in code
+  - Note environment-specific differences
+  - Explain secrets management (if present)
+  - Reference actual config files

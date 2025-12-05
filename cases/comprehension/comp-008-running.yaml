@@ -1,0 +1,48 @@
+# Comprehension Case: Running the Project
+# Tests whether the agent understands how to run the project as a user
+
+id: comp-008
+title: "How to Run It"
+type: comprehension
+
+prompt: |
+  I'm a user who just cloned this project. How do I run it?
+
+  - What are the prerequisites (runtime, dependencies)?
+  - What commands do I need to run to get it working?
+  - How do I know it's running correctly?
+  - Are there different ways to run it (dev mode, production, etc.)?
+
+  Give me the step-by-step "getting started" guide.
+
+source: bootstrap
+category: comprehension
+language: any
+difficulty: easy
+
+tags:
+  - usage
+  - getting-started
+  - documentation
+
+files: []
+
+rubric: comprehension
+
+expectations:
+  maxTimeSeconds: 240
+  maxTokens: 60000
+  allowedTools:
+    - read
+    - grep
+    - glob
+    - search
+
+notes: |
+  A good answer will:
+  - Identify prerequisites (Node, Python, Docker, etc.)
+  - Show the exact commands to install and run
+  - Explain how to verify it's working
+  - Note any configuration needed first
+
+  This tests practical usability understanding.

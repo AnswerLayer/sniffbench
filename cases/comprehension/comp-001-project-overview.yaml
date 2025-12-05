@@ -1,0 +1,51 @@
+# Comprehension Case: Project Overview
+# Tests whether the agent can understand and explain what the project is
+
+id: comp-001
+title: "Project Overview"
+type: comprehension
+
+prompt: |
+  Imagine you're writing the README for this project. Help me understand:
+
+  - What does this project do? What problem does it solve?
+  - Who is it for?
+  - What are the main components or modules?
+  - How is the codebase organized?
+
+  Give me the "elevator pitch" version, then a slightly deeper dive
+  into the structure.
+
+source: bootstrap
+category: comprehension
+language: any
+difficulty: easy
+
+tags:
+  - architecture
+  - overview
+  - documentation
+
+files: []
+
+rubric: comprehension
+
+expectations:
+  maxTimeSeconds: 300
+  maxTokens: 80000
+  allowedTools:
+    - read
+    - grep
+    - glob
+    - search
+
+notes: |
+  A good answer will:
+  - Correctly identify the project's purpose
+  - Describe the target users/audience
+  - Outline the major components
+  - Explain the directory structure
+  - Reference key files (README, package.json, etc.)
+
+  This is the foundation - if the agent can't answer this,
+  it can't answer anything else well.

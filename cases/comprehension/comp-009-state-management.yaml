@@ -1,0 +1,48 @@
+# Comprehension Case: State Management
+# Tests whether the agent understands how state is managed
+
+id: comp-009
+title: "State Management"
+type: comprehension
+
+prompt: |
+  How is state managed in this application?
+
+  This could mean:
+  - Database state: How is the database schema organized?
+  - Session state: How is user session data stored?
+  - Application state: For frontends, how is UI state managed?
+  - Cache state: Is there caching? What's cached and where?
+
+  Focus on whichever is most relevant to this codebase.
+
+source: bootstrap
+category: comprehension
+language: any
+difficulty: hard
+
+tags:
+  - architecture
+  - state
+  - data
+
+files: []
+
+rubric: comprehension
+
+expectations:
+  maxTimeSeconds: 360
+  maxTokens: 100000
+  allowedTools:
+    - read
+    - grep
+    - glob
+    - search
+
+notes: |
+  A good answer will:
+  - Identify the relevant types of state
+  - Explain where state lives (DB, Redis, in-memory)
+  - Show how state is accessed and modified
+  - Note any patterns (migrations, Redux, etc.)
+  - Discuss consistency and synchronization

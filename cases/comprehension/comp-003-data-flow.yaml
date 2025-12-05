@@ -1,0 +1,52 @@
+# Comprehension Case: Data Flow
+# Tests whether the agent can trace data through the system
+
+id: comp-003
+title: "Tracing Data Flow"
+type: comprehension
+
+prompt: |
+  Pick the most important entity or data type in this codebase
+  (user, order, document, etc.) and trace its journey:
+
+  - Where is it first created or received?
+  - How does it move through the system?
+  - Where is it stored (database, cache, file)?
+  - How is it retrieved and returned to clients?
+
+  Draw me a mental picture of this data's lifecycle.
+
+source: bootstrap
+category: comprehension
+language: any
+difficulty: medium
+
+tags:
+  - architecture
+  - data-flow
+  - domain
+
+files: []
+
+rubric: comprehension
+
+expectations:
+  maxTimeSeconds: 360
+  maxTokens: 100000
+  allowedTools:
+    - read
+    - grep
+    - glob
+    - search
+
+notes: |
+  A good answer will:
+  - Correctly identify a core domain entity
+  - Trace it from API/input through to storage
+  - Note transformations along the way
+  - Reference specific files and functions
+
+  This tests understanding of:
+  - Domain model
+  - Service layer organization
+  - Data access patterns

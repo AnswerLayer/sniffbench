@@ -1,0 +1,51 @@
+# Comprehension Case: Extending the System
+# Tests whether the agent can identify extension patterns
+
+id: comp-010
+title: "Extension Points"
+type: comprehension
+
+prompt: |
+  This project likely has places where new functionality can be "plugged in"
+  following existing patterns. Find the most obvious extension point and explain:
+
+  - What pattern is used (plugin, adapter, strategy, factory, etc.)?
+  - Where would I add a new implementation?
+  - What interface or contract must I follow?
+  - Show me an existing implementation as an example.
+
+  Think about things like: new database adapters, new auth providers,
+  new API integrations, new report types, etc.
+
+source: bootstrap
+category: comprehension
+language: any
+difficulty: hard
+
+tags:
+  - architecture
+  - patterns
+  - extensibility
+
+files: []
+
+rubric: comprehension
+
+expectations:
+  maxTimeSeconds: 360
+  maxTokens: 100000
+  allowedTools:
+    - read
+    - grep
+    - glob
+    - search
+
+notes: |
+  A good answer will:
+  - Identify a real extension point in the code
+  - Name the pattern being used
+  - Show the interface/contract
+  - Reference an existing implementation
+  - Explain how to add a new one
+
+  This tests deep architectural understanding.

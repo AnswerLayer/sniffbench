@@ -1,0 +1,47 @@
+# Comprehension Case: Key Dependencies
+# Tests whether the agent understands external integrations
+
+id: comp-007
+title: "Key Dependencies"
+type: comprehension
+
+prompt: |
+  What are the 3-5 most important external dependencies in this project,
+  and how are they used?
+
+  For each one:
+  - What problem does it solve?
+  - Where in the code is it used?
+  - Are there any wrappers or abstractions around it?
+  - Could it be replaced? How hard would that be?
+
+source: bootstrap
+category: comprehension
+language: any
+difficulty: medium
+
+tags:
+  - dependencies
+  - architecture
+  - integrations
+
+files: []
+
+rubric: comprehension
+
+expectations:
+  maxTimeSeconds: 300
+  maxTokens: 80000
+  allowedTools:
+    - read
+    - grep
+    - glob
+    - search
+
+notes: |
+  A good answer will:
+  - Identify genuinely important deps (not utilities like lodash)
+  - Explain their purpose in context
+  - Show where they're used
+  - Note any abstraction layers
+  - Assess coupling (how hard to replace)

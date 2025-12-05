@@ -1,0 +1,49 @@
+# Comprehension Case: Shipping Changes
+# Tests whether the agent understands the deployment/release process
+
+id: comp-012
+title: "How to Ship"
+type: comprehension
+
+prompt: |
+  I've made changes and want to ship them. Walk me through:
+
+  - How do I build the project for production?
+  - Is there a CI/CD pipeline? What does it check?
+  - How are releases or deployments done?
+  - What environments exist (staging, production)?
+  - What's the process for getting code from my branch to users?
+
+source: bootstrap
+category: comprehension
+language: any
+difficulty: medium
+
+tags:
+  - deployment
+  - ci-cd
+  - release
+
+files: []
+
+rubric: comprehension
+
+expectations:
+  maxTimeSeconds: 300
+  maxTokens: 80000
+  allowedTools:
+    - read
+    - grep
+    - glob
+    - search
+
+notes: |
+  A good answer will:
+  - Show build commands for production
+  - Identify CI/CD config (GitHub Actions, etc.)
+  - Explain the deployment mechanism
+  - Note different environments
+  - Describe the release process (if any)
+
+  If there's no formal deployment (it's a library), explain
+  the publish/release process instead.

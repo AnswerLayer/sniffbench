@@ -1,0 +1,49 @@
+# Comprehension Case: Development Workflow
+# Tests whether the agent understands how to develop on this project
+
+id: comp-011
+title: "How to Develop"
+type: comprehension
+
+prompt: |
+  I'm a developer who wants to contribute to this project.
+  Walk me through the development workflow:
+
+  - How do I set up my development environment?
+  - How do I run the project in development mode?
+  - What's the edit-test-debug cycle like?
+  - Are there any dev tools, scripts, or helpers I should know about?
+  - How do I run tests as I work?
+
+source: bootstrap
+category: comprehension
+language: any
+difficulty: medium
+
+tags:
+  - development
+  - workflow
+  - contributing
+
+files: []
+
+rubric: comprehension
+
+expectations:
+  maxTimeSeconds: 300
+  maxTokens: 80000
+  allowedTools:
+    - read
+    - grep
+    - glob
+    - search
+
+notes: |
+  A good answer will:
+  - Explain dev environment setup
+  - Show dev mode commands (hot reload, watch, etc.)
+  - Describe the testing workflow
+  - Note any dev scripts in package.json/Makefile/etc.
+  - Mention debugging tools or techniques
+
+  This tests understanding of developer experience.

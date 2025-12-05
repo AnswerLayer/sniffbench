@@ -1,0 +1,53 @@
+# Comprehension Case: Adding New Features
+# Tests whether the agent understands how to extend the codebase
+
+id: comp-002
+title: "How to Add New Features"
+type: comprehension
+
+prompt: |
+  If I wanted to add new functionality to this project, help me understand
+  the patterns I should follow:
+
+  - Where does new code typically go?
+  - What's the conventional structure for a new feature or module?
+  - What existing code should I look at as an example?
+  - What other files typically need to change when adding something new
+    (types, tests, exports, etc.)?
+
+  Walk me through the project's conventions for extending it.
+
+source: bootstrap
+category: comprehension
+language: any
+difficulty: easy
+
+tags:
+  - architecture
+  - patterns
+  - conventions
+
+files: []
+
+rubric: comprehension
+
+expectations:
+  maxTimeSeconds: 300
+  maxTokens: 80000
+  allowedTools:
+    - read
+    - grep
+    - glob
+    - search
+
+notes: |
+  A good answer will:
+  - Identify the conventional locations for new code
+  - Point to a good example to follow
+  - Note related changes (exports, index files, tests)
+  - Show awareness of project-specific patterns
+
+  Signs of good understanding:
+  - References actual file paths and patterns
+  - Shows awareness of project conventions
+  - Doesn't assume specific project types (API, CLI, library, etc.)
