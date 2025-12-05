@@ -15,6 +15,7 @@ import * as readline from 'readline';
 import { box } from '../../utils/ui';
 import { loadCases, getDefaultCasesDir } from '../../cases';
 import { Case } from '../../cases/types';
+import { getAgent, AgentWrapper, AgentResult } from '../../agents';
 
 interface InterviewOptions {
   cases?: string;
@@ -143,28 +144,31 @@ function formatAnswer(answer: string, maxLines: number = 30): string {
 }
 
 /**
- * Simulate agent response (placeholder - will integrate with real agent)
+ * Run agent on a comprehension question
  */
-async function getAgentResponse(caseData: Case, _agent: string): Promise<string> {
-  // TODO: Integrate with actual agent wrapper
-  // For now, return a placeholder that indicates the agent would explore
+async function getAgentResponse(
+  caseData: Case,
+  agent: AgentWrapper,
+  cwd: string,
+  onOutput?: (chunk: string) => void
+): Promise<AgentResult> {
+  // Build the prompt for the agent
+  // We frame it as a comprehension question about the codebase
+  const prompt = `You are being evaluated on your understanding of this codebase.
 
-  return `[Agent would explore the codebase and answer:]
+Please answer the following question by exploring the codebase:
 
 ${caseData.prompt}
 
----
-This is a placeholder response. In the full implementation, the agent
-(${_agent}) would:
+Take your time to explore and provide a thorough, accurate answer with specific file references where relevant.`;
 
-1. Analyze the codebase using allowed tools (read, grep, glob, search)
-2. Build understanding of the relevant areas
-3. Provide a detailed answer based on what it finds
+  const result = await agent.run(prompt, {
+    cwd,
+    timeoutMs: (caseData.expectations?.maxTimeSeconds || 300) * 1000,
+    onOutput,
+  });
 
-To implement:
-- Connect to Claude Code SDK or other agent wrappers
-- Capture the agent's exploration and final answer
-- Track tool usage for efficiency metrics`;
+  return result;
 }
 
 /**
@@ -172,11 +176,11 @@ To implement:
  */
 async function runInterviewQuestion(
   caseData: Case,
-  agent: string,
+  agent: AgentWrapper,
   rl: readline.Interface,
   store: BaselineStore,
   projectRoot: string
-): Promise<{ grade: number; skipped: boolean }> {
+): Promise<{ grade: number; skipped: boolean; durationMs?: number }> {
   const existingBaseline = store.baselines[caseData.id];
 
   // Show the question
@@ -192,17 +196,42 @@ async function runInterviewQuestion(
   }
 
   // Get agent's response
-  const spinner = ora('Agent is exploring the codebase...').start();
+  const spinner = ora(`${agent.displayName} is exploring the codebase...`).start();
 
   try {
-    const answer = await getAgentResponse(caseData, agent);
-    spinner.succeed('Agent completed');
+    const result = await getAgentResponse(caseData, agent, projectRoot, (chunk) => {
+      // Update spinner with progress indication
+      const lines = chunk.split('\n').filter(l => l.trim());
+      if (lines.length > 0) {
+        const lastLine = lines[lines.length - 1].slice(0, 50);
+        spinner.text = `${agent.displayName} is working... ${chalk.dim(lastLine)}`;
+      }
+    });
+
+    if (result.timedOut) {
+      spinner.fail(`${agent.displayName} timed out`);
+      console.log(chalk.yellow('\n  The agent took too long. Consider increasing the timeout.'));
+      return { grade: 0, skipped: true, durationMs: result.durationMs };
+    }
+
+    if (!result.success) {
+      spinner.fail(`${agent.displayName} failed: ${result.error}`);
+      return { grade: 0, skipped: true, durationMs: result.durationMs };
+    }
+
+    const durationSec = (result.durationMs / 1000).toFixed(1);
+    spinner.succeed(`${agent.displayName} completed in ${durationSec}s`);
 
     // Display the answer
     console.log(chalk.dim('\n  ─────────────────────────────────────────'));
     console.log(chalk.bold('  Agent\'s Answer:\n'));
-    console.log(formatAnswer(answer).split('\n').map(l => '  ' + l).join('\n'));
+    console.log(formatAnswer(result.answer).split('\n').map(l => '  ' + l).join('\n'));
     console.log(chalk.dim('\n  ─────────────────────────────────────────'));
+
+    // Show tools used if available
+    if (result.toolsUsed && result.toolsUsed.length > 0) {
+      console.log(chalk.dim(`\n  Tools used: ${result.toolsUsed.join(', ')}`));
+    }
 
     // Show grading scale and ask for grade
     showGradingScale();
@@ -215,7 +244,7 @@ async function runInterviewQuestion(
     store.baselines[caseData.id] = {
       caseId: caseData.id,
       question: caseData.prompt,
-      answer,
+      answer: result.answer,
       grade,
       gradedAt: new Date().toISOString(),
       gradedBy: 'human',
@@ -226,7 +255,7 @@ async function runInterviewQuestion(
 
     console.log(chalk.green(`\n  ✓ Baseline saved (${grade}/10)`));
 
-    return { grade, skipped: false };
+    return { grade, skipped: false, durationMs: result.durationMs };
   } catch (err) {
     spinner.fail(`Failed: ${(err as Error).message}`);
     return { grade: 0, skipped: true };
@@ -247,8 +276,31 @@ export async function interviewCommand(options: InterviewOptions) {
     'sniff interview'
   ));
 
+  // Get the agent
+  let agent: AgentWrapper;
+  try {
+    agent = getAgent(options.agent);
+  } catch (err) {
+    console.log(chalk.red(`\n  Error: ${(err as Error).message}`));
+    return;
+  }
+
+  // Check agent availability
+  const spinner = ora(`Checking ${agent.displayName} availability...`).start();
+  const available = await agent.isAvailable();
+
+  if (!available) {
+    spinner.fail(`${agent.displayName} is not available`);
+    console.log(chalk.yellow(`\n  Make sure '${options.agent}' is installed and in your PATH.`));
+    console.log(chalk.dim(`  For Claude Code: https://claude.ai/code`));
+    return;
+  }
+
+  const version = await agent.getVersion();
+  spinner.succeed(`${agent.displayName} ${version ? `(${version})` : ''} is ready`);
+
   // Load comprehension cases
-  const spinner = ora('Loading comprehension cases...').start();
+  spinner.start('Loading comprehension cases...');
   const casesDir = getDefaultCasesDir();
 
   const cases = await loadCases(casesDir, {
@@ -307,7 +359,7 @@ export async function interviewCommand(options: InterviewOptions) {
       console.log(chalk.bold(`\n  [${i + 1}/${cases.length}] ${caseData.title}`));
       console.log(chalk.dim(`  Difficulty: ${caseData.difficulty}\n`));
 
-      const result = await runInterviewQuestion(caseData, options.agent, rl, store, projectRoot);
+      const result = await runInterviewQuestion(caseData, agent, rl, store, projectRoot);
       results.push({ caseId: caseData.id, ...result });
 
       if (i < cases.length - 1) {
