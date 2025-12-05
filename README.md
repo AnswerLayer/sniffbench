@@ -6,90 +6,123 @@
 
 When you change your AI coding setup—switching models, adjusting prompts, or trying new tools—you're flying blind. Did it actually get better? Worse? Hard to say without data.
 
-Sniffbench gives you that data. It runs your coding agent through a suite of real programming tasks and measures what matters: correctness, code quality, safety, and performance.
-
-## Why it exists
-
-We built AnswerLayer using Claude Code and constantly wondered: "Is this config actually better?" Every tweak was a guess. Every comparison was anecdotal.
-
-We need a way to objectively measure coding agent performance on tasks that matter for our codebase. So we're building one. Open source, because this problem isn't unique to us.
+Sniffbench gives you that data. It runs your coding agent through evaluation tasks and measures what matters.
 
 ## Quick Start
 
 ```bash
-# Install from source (npm coming soon)
+# Clone and build
 git clone https://github.com/answerlayer/sniffbench.git
 cd sniffbench
-pnpm install
-pnpm build
+npm install
+npm run build
 
-# Check status (run directly without global install)
-node dist/cli/index.js status
+# Link globally (optional)
+npm link
 
-# See available commands
-node dist/cli/index.js --help
+# Check it's working
+sniff --help
+sniff doctor
 ```
 
-Or try it instantly with npx (once published):
-```bash
-npx sniffbench status
-# Or with pnpm
-pnpm dlx sniffbench status
-```
+## What Works Now
 
-### Planned Workflow
+### Comprehension Interview
 
-Once core features are implemented:
+Test how well your agent understands a codebase:
 
 ```bash
-# Initialize on your project
-sniff init
-
-# Run evaluation
-sniff run --agent claude-code
-
-# Make changes to your agent config, then run again
-sniff run --agent claude-code
-
-# Compare results
-sniff compare run-001 run-002
+sniff interview
 ```
 
-Each evaluation will run in Docker isolation. Your actual codebase stays untouched.
+This runs your agent through 12 comprehension questions about the codebase architecture. You grade each answer on a 1-10 scale to establish baselines. Future runs compare against your baseline.
 
-## Current Status
+```
+╭─ sniff interview ────────────────────────────────────────────────╮
+│ Comprehension Interview                                          │
+│                                                                  │
+│ Test how well your agent understands this codebase.              │
+│ You'll grade each answer on a 1-10 scale to establish baselines. │
+╰──────────────────────────────────────────────────────────────────╯
 
-**Early alpha.** The CLI works and you can install it, but core features are still in development.
+✔ Found 12 comprehension questions
 
-We're building it in phases:
+  Questions to cover:
 
-1. **Foundation** - CLI, Docker sandboxing, case management
-2. **Bootstrap Cases** - 15-20 universal coding tasks that ship with the tool
-3. **Claude Code Integration** - First-class support for Claude Code
-4. **Metrics** - Comprehensive scoring (correctness, quality, safety, performance)
-5. **LLM Generation** - Auto-generate repo-specific test cases
-6. **Multi-Agent** - Support for Cursor, Aider, Continue.dev, etc.
+  ○ not graded  comp-001: Project Overview
+  ○ not graded  comp-002: How to Add New Features
+  ...
+```
 
-See [ROADMAP.md](ROADMAP.md) for detailed phases and what's available to work on.
+### Case Management
 
-## What needs building
+```bash
+# List all test cases
+sniff cases
 
-Everything. This is ground-zero.
+# Show details of a specific case
+sniff cases show comp-001
 
-Priority areas:
-- **Core CLI** (Python/Node.js, basic commands, config management)
-- **Docker sandboxing** (container lifecycle, resource limits)
-- **Bootstrap test cases** (designing the initial 15-20 universal tasks)
-- **Metrics implementation** (scoring algorithms, evaluation logic)
-- **Agent wrappers** (programmatic interfaces to Claude Code, etc.)
+# List categories
+sniff cases categories
+```
 
-Check out [CONTRIBUTING.md](CONTRIBUTING.md) for how to get started.
+### System Status
 
-## Prior art
+```bash
+# Check sniffbench configuration
+sniff status
 
-We researched existing solutions (SWE-agent, OpenAI Evals, DeepEval, InspectAI, Aider benchmarks). See [existing_work.md](existing_work.md) for analysis.
+# Run diagnostics (Docker, dependencies)
+sniff doctor
+```
 
-None quite fit what we need: a local tool that's simple to run, generates repo-specific tests, and works with multiple agents. So we're building it.
+## What We Measure
+
+Sniffbench evaluates agents on behaviors that matter for real-world development:
+
+1. **Style Adherence** - Does the agent follow existing patterns in the repo?
+2. **Targeted Changes** - Does it make specific, focused changes without over-engineering?
+3. **Efficient Navigation** - Does it research the codebase efficiently?
+4. **Non-Regression** - Do existing tests still pass?
+
+We explicitly do NOT measure generic "best practices" divorced from project context. See [VALUES.md](VALUES.md) for our full philosophy.
+
+## Case Types
+
+| Type | Description | Status |
+|------|-------------|--------|
+| **Comprehension** | Questions about codebase architecture | ✅ Ready |
+| **Bootstrap** | Common tasks (fix linting, rename symbols) | 🚧 In Progress |
+| **Closed Issues** | Real issues from your repo's history | 🚧 In Progress |
+| **Generated** | LLM discovers improvement opportunities | 🚧 Planned |
+
+## Roadmap
+
+We're building in phases:
+
+1. ✅ **Foundation** - CLI, Docker sandboxing, case management
+2. 🚧 **Case Types** - Comprehension, bootstrap, closed issues, generated
+3. ⬜ **Agent Integration** - Claude Code, Cursor, Aider wrappers
+4. ⬜ **Metrics** - Comprehensive scoring and comparison
+5. ⬜ **Multi-Agent** - Cross-agent benchmarking
+
+See [ROADMAP.md](ROADMAP.md) for detailed phases.
+
+## Contributing
+
+We welcome contributions! Areas that need work:
+
+- **Agent wrappers** - Integrate with Claude Code, Cursor, Aider
+- **Bootstrap cases** - Detection and validation for common tasks
+- **Closed issues scanner** - Extract cases from git history
+- **Documentation** - Examples, tutorials, case studies
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) to get started.
+
+## Prior Art
+
+We researched existing solutions (SWE-Bench, CORE-Bench, Aider benchmarks). See [existing_work.md](existing_work.md) for analysis.
 
 ## License
 
@@ -97,4 +130,4 @@ MIT - see [LICENSE](LICENSE)
 
 ## Questions?
 
-Open an issue. We're figuring this out as we go.
+Open an issue. We're building this in public and welcome feedback.
