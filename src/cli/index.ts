@@ -15,6 +15,7 @@ import {
 } from './commands/cases';
 import { statusCommand } from './commands/status';
 import { doctorCommand } from './commands/doctor';
+import { interviewCommand } from './commands/interview';
 
 const program = new Command();
 
@@ -105,5 +106,13 @@ program
   .command('doctor')
   .description('Run diagnostics and check system requirements')
   .action(doctorCommand);
+
+program
+  .command('interview')
+  .description('Run comprehension interview to test agent understanding')
+  .option('--agent <name>', 'Agent to evaluate', 'claude-code')
+  .option('--cases <cases>', 'Specific case IDs to run (comma-separated)')
+  .option('--output <dir>', 'Output directory for results', 'results')
+  .action(interviewCommand);
 
 program.parse();
