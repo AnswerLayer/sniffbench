@@ -46,3 +46,4 @@ coverage/
 .env.local
 local_config.yaml
 results/
+.sniffbench/
