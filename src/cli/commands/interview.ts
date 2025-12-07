@@ -8,7 +8,7 @@
  */
 
 import chalk from 'chalk';
-import ora from 'ora';
+import ora, { Ora } from 'ora';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as readline from 'readline';
@@ -16,6 +16,48 @@ import { box } from '../../utils/ui';
 import { loadCases, getDefaultCasesDir } from '../../cases';
 import { Case } from '../../cases/types';
 import { getAgent, AgentWrapper, AgentResult } from '../../agents';
+
+/**
+ * Exploration status messages - cycles through these while agent works
+ */
+const EXPLORATION_STATES = [
+  { text: 'Reading files', color: chalk.cyan },
+  { text: 'Scanning structure', color: chalk.blue },
+  { text: 'Analyzing code', color: chalk.magenta },
+  { text: 'Finding patterns', color: chalk.yellow },
+  { text: 'Building context', color: chalk.green },
+  { text: 'Connecting dots', color: chalk.cyan },
+];
+
+/**
+ * Create an animated exploration spinner
+ */
+function createExplorationSpinner(agentName: string): { spinner: Ora; stop: () => void } {
+  let stateIndex = 0;
+  const spinner = ora({
+    text: `${chalk.bold.hex('#D97706')(agentName)} ${EXPLORATION_STATES[0].color(EXPLORATION_STATES[0].text)}`,
+    spinner: {
+      interval: 80,
+      frames: ['◐', '◓', '◑', '◒'],
+    },
+    color: 'yellow',
+  }).start();
+
+  // Cycle through states
+  const interval = setInterval(() => {
+    stateIndex = (stateIndex + 1) % EXPLORATION_STATES.length;
+    const state = EXPLORATION_STATES[stateIndex];
+    spinner.text = `${chalk.bold.hex('#D97706')(agentName)} ${state.color(state.text)}`;
+  }, 2000);
+
+  return {
+    spinner,
+    stop: () => {
+      clearInterval(interval);
+      spinner.stop();
+    },
+  };
+}
 
 interface InterviewOptions {
   cases?: string;
@@ -195,24 +237,33 @@ async function runInterviewQuestion(
     }
   }
 
-  // Get agent's response - stream output live
-  console.log(chalk.dim(`\n  ${agent.displayName} is exploring...\n`));
-  console.log(chalk.dim('  ─────────────────────────────────────────\n'));
+  // Get agent's response - stream output live with animated spinner
+  console.log('');
+  const exploration = createExplorationSpinner(agent.displayName);
 
   let outputStarted = false;
   const startTime = Date.now();
 
   try {
     const result = await getAgentResponse(caseData, agent, projectRoot, (chunk) => {
-      // Stream output directly to console
+      // Stop spinner and show separator when first output arrives
       if (!outputStarted) {
         outputStarted = true;
+        exploration.stop();
+        console.log(chalk.dim('\n  ─────────────────────────────────────────\n'));
       }
       process.stdout.write(chunk);
     });
 
+    // Ensure spinner is stopped
+    exploration.stop();
+
     const durationSec = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.log(chalk.dim('\n\n  ─────────────────────────────────────────'));
+    if (!outputStarted) {
+      console.log(chalk.dim('\n  ─────────────────────────────────────────'));
+    } else {
+      console.log(chalk.dim('\n\n  ─────────────────────────────────────────'));
+    }
 
     if (result.timedOut) {
       console.log(chalk.yellow(`\n  ✗ ${agent.displayName} timed out after ${durationSec}s`));
@@ -256,6 +307,7 @@ async function runInterviewQuestion(
 
     return { grade, skipped: false, durationMs: result.durationMs };
   } catch (err) {
+    exploration.stop();
     console.log(chalk.red(`\n  ✗ Failed: ${(err as Error).message}`));
     return { grade: 0, skipped: true };
   }
