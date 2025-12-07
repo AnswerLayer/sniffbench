@@ -1,6 +1,6 @@
 # Sniffbench
 
-> A benchmark suite for coding agents. Think pytest, but for evaluating AI assistants.
+> A custom benchmark suite for coding agents. 
 
 ## What is this?
 
@@ -113,7 +113,7 @@ See [ROADMAP.md](ROADMAP.md) for detailed phases.
 
 We welcome contributions! Areas that need work:
 
-- **Agent wrappers** - Integrate with Claude Code, Cursor, Aider
+- **Agent wrappers** - Integrate with OpenCode, Cursor, Gemini, OpenCode, or your favourite CLI-bsed coding agent
 - **Bootstrap cases** - Detection and validation for common tasks
 - **Closed issues scanner** - Extract cases from git history
 - **Documentation** - Examples, tutorials, case studies
