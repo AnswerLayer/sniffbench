@@ -15,7 +15,7 @@ import * as readline from 'readline';
 import { box } from '../../utils/ui';
 import { loadCases, getDefaultCasesDir } from '../../cases';
 import { Case } from '../../cases/types';
-import { getAgent, AgentWrapper, AgentResult } from '../../agents';
+import { getAgent, AgentWrapper, AgentResult, AgentEvent } from '../../agents';
 
 /**
  * Exploration status messages - cycles through these while agent works
@@ -268,7 +268,7 @@ async function getAgentResponse(
   caseData: Case,
   agent: AgentWrapper,
   cwd: string,
-  onOutput?: (chunk: string) => void
+  onEvent?: (event: AgentEvent) => void
 ): Promise<AgentResult> {
   // Build the prompt for the agent
   // We frame it as a comprehension question about the codebase
@@ -283,7 +283,7 @@ Be concise but accurate. Focus on the key points with specific file references w
   const result = await agent.run(prompt, {
     cwd,
     timeoutMs: (caseData.expectations?.maxTimeSeconds || 300) * 1000,
-    onOutput,
+    onEvent,
   });
 
   return result;
@@ -324,28 +324,102 @@ async function runInterviewQuestion(
   let textOutputStarted = false;
 
   try {
-    const result = await getAgentResponse(caseData, agent, projectRoot, (chunk) => {
+    const result = await getAgentResponse(caseData, agent, projectRoot, (event) => {
       outputStarted = true;
 
-      // Check if this chunk contains tool calls (lines starting with ›)
-      // Tool calls are formatted like "  › Read src/file.ts"
-      const isToolCall = chunk.trim().startsWith('›');
+      switch (event.type) {
+        case 'tool_start': {
+          // Show tool with key input info
+          const input = event.tool.input;
+          let detail = '';
 
-      if (isToolCall) {
-        // Extract tool call info and update spinner
-        const clean = chunk.trim().replace(/\x1b\[[0-9;]*m/g, '').substring(0, 80);
-        exploration.toolCalls.push(clean);
-        const state = EXPLORATION_STATES[0];
-        const baseText = `${chalk.bold.hex('#D97706')(agent.displayName)} ${state.color(state.text)}`;
-        exploration.spinner.text = `${baseText} ${chalk.dim(`(${exploration.toolCalls.length} tools)`)}`;
-      } else if (chunk.trim()) {
-        // This is text content - stop spinner and stream it
-        if (!textOutputStarted) {
-          textOutputStarted = true;
-          exploration.stop();
-          console.log(chalk.dim('\n  ─────────────────────────────────────────\n'));
+          // Special handling for Task tool - show subagent type and prompt
+          if (event.tool.name === 'Task') {
+            const subagentType = input.subagent_type ? `[${input.subagent_type}]` : '';
+            const desc = input.description || '';
+            const prompt = input.prompt ? String(input.prompt).substring(0, 60) : '';
+            detail = `${subagentType} ${desc}`.trim();
+
+            exploration.toolCalls.push(`› ${event.tool.name}`);
+            exploration.spinner.stop();
+            console.log(chalk.yellow(`  ⚡ Task ${chalk.bold(subagentType)} ${chalk.dim(desc)}`));
+            if (prompt) {
+              console.log(chalk.dim(`     "${prompt}${String(input.prompt).length > 60 ? '...' : ''}"`));
+            }
+            exploration.spinner.start();
+          } else {
+            // Extract most useful input field for display
+            if (input.file_path) detail = String(input.file_path).split('/').slice(-2).join('/');
+            else if (input.pattern) detail = String(input.pattern);
+            else if (input.command) detail = String(input.command).substring(0, 50);
+            else if (input.query) detail = String(input.query).substring(0, 40);
+            else if (input.path) detail = String(input.path).split('/').slice(-2).join('/');
+
+            const toolInfo = detail ? `${event.tool.name} ${chalk.dim(detail)}` : event.tool.name;
+            exploration.toolCalls.push(`› ${event.tool.name}`);
+
+            // Stop spinner and show tool call
+            exploration.spinner.stop();
+            console.log(chalk.cyan(`  › ${toolInfo}`));
+            exploration.spinner.start();
+          }
+
+          const state = EXPLORATION_STATES[exploration.toolCalls.length % EXPLORATION_STATES.length];
+          const baseText = `${chalk.bold.hex('#D97706')(agent.displayName)} ${state.color(state.text)}`;
+          exploration.spinner.text = `${baseText} ${chalk.dim(`(${exploration.toolCalls.length} tools)`)}`;
+          break;
         }
-        process.stdout.write(chunk);
+
+        case 'tool_end': {
+          // Could show truncated result here if desired
+          break;
+        }
+
+        case 'thinking': {
+          // Show thinking/reasoning output between tool calls
+          const text = event.text.trim();
+          if (text) {
+            exploration.spinner.stop();
+            // Show first line or first 150 chars of thinking
+            const firstLine = text.split('\n')[0];
+            const display = firstLine.length > 150
+              ? firstLine.substring(0, 150) + '...'
+              : firstLine;
+            console.log(chalk.magenta(`  💭 ${display}`));
+            // If there's more content, indicate it
+            if (text.includes('\n') || text.length > 150) {
+              const lineCount = text.split('\n').length;
+              if (lineCount > 1) {
+                console.log(chalk.dim(`     (${lineCount} lines of reasoning)`));
+              }
+            }
+            exploration.spinner.start();
+          }
+          break;
+        }
+
+        case 'text_delta': {
+          // Stream text content to stdout
+          if (event.text.trim()) {
+            if (!textOutputStarted) {
+              textOutputStarted = true;
+              exploration.stop();
+              console.log(chalk.dim('\n  ─────────────────────────────────────────\n'));
+            }
+            process.stdout.write(event.text);
+          }
+          break;
+        }
+
+        case 'status': {
+          // Show status updates in spinner
+          exploration.spinner.text = `${chalk.bold.hex('#D97706')(agent.displayName)} ${chalk.cyan(event.message)}`;
+          break;
+        }
+
+        // Ignore other event types for now
+        default:
+          break;
       }
     });
 

@@ -1,21 +1,54 @@
 /**
- * Claude Code agent wrapper
+ * Claude Code agent wrapper using the official SDK
  *
- * Wraps the Claude Code CLI (`claude`) to run prompts programmatically.
- * Uses the --print (-p) flag for non-interactive single-prompt execution.
+ * Uses @anthropic-ai/claude-agent-sdk for programmatic interaction
+ * with full metrics capture (tokens, cost, tool usage).
  */
 
 import { spawn } from 'child_process';
-import { AgentWrapper, AgentResult, AgentRunOptions } from './types';
+import {
+  AgentWrapper,
+  AgentResult,
+  AgentRunOptions,
+  AgentEvent,
+  ToolCall,
+  emptyAgentResult,
+} from './types.js';
+
+// SDK type imports
+type SDKMessage = import('@anthropic-ai/claude-agent-sdk').SDKMessage;
+type SDKResultMessage = import('@anthropic-ai/claude-agent-sdk').SDKResultMessage;
+type SDKAssistantMessage = import('@anthropic-ai/claude-agent-sdk').SDKAssistantMessage;
+type SDKSystemMessage = import('@anthropic-ai/claude-agent-sdk').SDKSystemMessage;
+type SDKUserMessage = import('@anthropic-ai/claude-agent-sdk').SDKUserMessage;
+type SDKPartialAssistantMessage = import('@anthropic-ai/claude-agent-sdk').SDKPartialAssistantMessage;
+type Options = import('@anthropic-ai/claude-agent-sdk').Options;
 
 /**
- * Claude Code agent wrapper
+ * Type guard for tool_use_result shape (SDK types this as `unknown`)
+ */
+interface ToolUseResult {
+  tool_use_id?: string;
+  content?: string;
+}
+
+function isToolUseResult(value: unknown): value is ToolUseResult {
+  if (!value || typeof value !== 'object') return false;
+  const obj = value as Record<string, unknown>;
+  return (
+    (obj.tool_use_id === undefined || typeof obj.tool_use_id === 'string') &&
+    (obj.content === undefined || typeof obj.content === 'string')
+  );
+}
+
+/**
+ * Claude Code agent wrapper using the official SDK
  */
 export class ClaudeCodeAgent implements AgentWrapper {
   name = 'claude-code';
   displayName = 'Claude Code';
 
-  /** Path to claude CLI (defaults to 'claude' in PATH) */
+  /** Path to claude CLI (for version check) */
   private cliPath: string;
 
   constructor(cliPath: string = 'claude') {
@@ -23,7 +56,7 @@ export class ClaudeCodeAgent implements AgentWrapper {
   }
 
   /**
-   * Check if Claude Code CLI is available
+   * Check if Claude Code is available
    */
   async isAvailable(): Promise<boolean> {
     try {
@@ -63,249 +96,296 @@ export class ClaudeCodeAgent implements AgentWrapper {
   }
 
   /**
-   * Run a prompt through Claude Code
-   *
-   * Uses `claude -p "prompt"` for non-interactive execution.
-   * The agent will explore the codebase and provide an answer.
+   * Run a prompt through Claude Code using the SDK
    */
   async run(prompt: string, options: AgentRunOptions): Promise<AgentResult> {
     const startTime = Date.now();
     const timeoutMs = options.timeoutMs || 300000; // 5 min default
 
-    return new Promise((resolve) => {
-      // Build command args
-      // -p: print mode (non-interactive, single prompt)
-      // --output-format stream-json: get real-time streaming JSON output
-      // --verbose: required for stream-json
-      // --include-partial-messages: stream text as it's generated
-      const args = ['-p', prompt, '--output-format', 'stream-json', '--verbose', '--include-partial-messages'];
+    // Track tool calls
+    const toolCalls: ToolCall[] = [];
+    const toolStartTimes: Map<string, number> = new Map();
+    let model = 'unknown';
+    let sessionId = '';
 
-      const proc = spawn(this.cliPath, args, {
+    try {
+      // Dynamic import of ESM SDK
+      const sdk = await import('@anthropic-ai/claude-agent-sdk');
+
+      // Build SDK options
+      // Note: env is passed directly without spreading process.env to avoid leaking secrets.
+      // SDK inherits process.env by default when env is undefined. If caller needs to add
+      // custom vars while preserving the environment, they should explicitly spread process.env.
+      const sdkOptions: Options = {
         cwd: options.cwd,
-        env: {
-          ...process.env,
-          ...options.env,
-          // Ensure non-interactive
-          CI: 'true',
-        },
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
+        permissionMode: options.permissionMode || 'acceptEdits',
+        allowedTools: options.allowedTools,
+        disallowedTools: options.disallowedTools,
+        maxBudgetUsd: options.maxBudgetUsd,
+        maxTurns: options.maxTurns,
+        model: options.model,
+        includePartialMessages: options.includePartialMessages ?? true,
+        env: options.env,
+        // Don't load user/project settings - isolation mode
+        settingSources: [],
+      };
 
-      // Close stdin immediately - claude -p doesn't need interactive input
-      proc.stdin?.end();
+      // Set up abort controller for timeout
+      const abortController = new AbortController();
+      sdkOptions.abortController = abortController;
 
-      let stdout = '';
-      let stderr = '';
-      let timedOut = false;
-      let finalAnswer = '';
-      let lineBuffer = '';
-
-      proc.stdout?.on('data', (data) => {
-        const chunk = data.toString();
-        stdout += chunk;
-
-        // Parse streaming JSON - each line is a JSON object
-        lineBuffer += chunk;
-        const lines = lineBuffer.split('\n');
-        lineBuffer = lines.pop() || ''; // Keep incomplete line in buffer
-
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const msg = JSON.parse(line);
-            const displayText = this.extractDisplayText(msg);
-            if (displayText && options.onOutput) {
-              options.onOutput(displayText);
-            }
-            // Capture final answer from result
-            if (msg.type === 'result' && msg.result) {
-              finalAnswer = msg.result;
-            }
-          } catch {
-            // Not valid JSON, output raw
-            options.onOutput?.(line + '\n');
-          }
-        }
-      });
-
-      proc.stderr?.on('data', (data) => {
-        const chunk = data.toString();
-        stderr += chunk;
-      });
-
-      // Handle timeout
-      const timer = setTimeout(() => {
-        timedOut = true;
-        proc.kill('SIGTERM');
-        // Give it a moment to clean up, then force kill
-        setTimeout(() => {
-          proc.kill('SIGKILL');
-        }, 5000);
+      const timeoutId = setTimeout(() => {
+        abortController.abort();
       }, timeoutMs);
 
-      proc.on('close', (code) => {
-        clearTimeout(timer);
-        const durationMs = Date.now() - startTime;
+      // Resolve includePartialMessages for consistent use
+      const includePartial = sdkOptions.includePartialMessages ?? true;
 
-        // Try to extract tool usage from JSON output
-        const toolsUsed = this.parseToolsUsedFromJson(stdout);
+      // Run the query
+      const query = sdk.query({ prompt, options: sdkOptions });
 
-        resolve({
-          answer: finalAnswer || this.parseAnswer(stdout),
-          success: code === 0 && !timedOut,
-          error: timedOut ? 'Timed out' : (code !== 0 ? `Exit code: ${code}` : undefined),
-          timedOut,
-          durationMs,
-          toolsUsed,
-          stdout,
-          stderr,
-          exitCode: code,
-        });
-      });
+      let finalResult: SDKResultMessage | null = null;
 
-      proc.on('error', (err) => {
-        clearTimeout(timer);
-        const durationMs = Date.now() - startTime;
+      try {
+        for await (const message of query) {
+          this.processMessage(message, options, toolCalls, toolStartTimes, includePartial, startTime, (m) => {
+            model = m;
+          }, (s) => {
+            sessionId = s;
+          });
 
-        resolve({
-          answer: '',
-          success: false,
-          error: err.message,
-          timedOut: false,
-          durationMs,
-          stdout,
-          stderr,
-          exitCode: null,
-        });
-      });
-    });
-  }
-
-  /**
-   * Parse the answer from Claude Code output
-   *
-   * The -p flag outputs the response directly, but there may be
-   * some formatting or metadata to strip.
-   */
-  private parseAnswer(stdout: string): string {
-    // For now, return the full output
-    // TODO: Parse out any metadata/formatting if needed
-    return stdout.trim();
-  }
-
-  /**
-   * Extract displayable text from a stream-json message
-   */
-  private extractDisplayText(msg: Record<string, unknown>): string | null {
-    // Handle streaming text deltas (with --include-partial-messages)
-    if (msg.type === 'stream_event') {
-      const event = msg.event as Record<string, unknown> | undefined;
-      if (event?.type === 'content_block_delta') {
-        const delta = event.delta as Record<string, unknown> | undefined;
-        if (delta?.type === 'text_delta' && typeof delta.text === 'string') {
-          return delta.text;
-        }
-      }
-      // Ignore content_block_start - we'll show details from assistant message
-    }
-
-    // Handle complete assistant messages with tool details
-    if (msg.type === 'assistant' && msg.message) {
-      const message = msg.message as Record<string, unknown>;
-      const content = message.content as Array<Record<string, unknown>> | undefined;
-      if (content && Array.isArray(content)) {
-        const textParts: string[] = [];
-        for (const part of content) {
-          if (part.type === 'tool_use') {
-            const input = part.input as Record<string, unknown> | undefined;
-            const formatted = this.formatToolCall(part.name as string, input);
-            if (formatted) {
-              textParts.push(formatted);
-            }
+          // Capture result message
+          if (message.type === 'result') {
+            finalResult = message as SDKResultMessage;
           }
         }
-        if (textParts.length > 0) {
-          return '\n' + textParts.join('\n') + '\n';
+      } finally {
+        clearTimeout(timeoutId);
+      }
+
+      // Build result from SDK response
+      if (finalResult) {
+        const result = this.buildResult(finalResult, toolCalls, model, sessionId);
+        options.onEvent?.({ type: 'complete', result });
+        return result;
+      }
+
+      // No result message - something went wrong
+      const errorResult = emptyAgentResult('No result received from SDK');
+      errorResult.durationMs = Date.now() - startTime;
+      errorResult.toolCalls = toolCalls;
+      errorResult.toolsUsed = [...new Set(toolCalls.map((t) => t.name))];
+      options.onEvent?.({ type: 'complete', result: errorResult });
+      return errorResult;
+
+    } catch (error) {
+      // Check for AbortError by name (DOMException may not inherit from Error)
+      const errorName = error && typeof error === 'object' && 'name' in error
+        ? (error as { name: unknown }).name
+        : undefined;
+      const isTimeout = errorName === 'AbortError';
+      const errorMessage = error instanceof Error
+        ? error.message
+        : (error && typeof error === 'object' && 'message' in error)
+          ? String((error as { message: unknown }).message)
+          : String(error);
+
+      options.onEvent?.({
+        type: 'error',
+        message: isTimeout ? 'Timed out' : errorMessage,
+        code: isTimeout ? 'TIMEOUT' : 'ERROR',
+      });
+
+      const errorResult = emptyAgentResult(isTimeout ? 'Timed out' : errorMessage);
+      errorResult.timedOut = isTimeout;
+      errorResult.durationMs = Date.now() - startTime;
+      errorResult.toolCalls = toolCalls;
+      errorResult.toolsUsed = [...new Set(toolCalls.map((t) => t.name))];
+      errorResult.model = model;
+
+      options.onEvent?.({ type: 'complete', result: errorResult });
+      return errorResult;
+    }
+  }
+
+  /**
+   * Process a streaming message from the SDK
+   */
+  private processMessage(
+    message: SDKMessage,
+    options: AgentRunOptions,
+    toolCalls: ToolCall[],
+    toolStartTimes: Map<string, number>,
+    includePartialMessages: boolean,
+    startTime: number,
+    setModel: (m: string) => void,
+    setSessionId: (s: string) => void,
+  ): void {
+    switch (message.type) {
+      case 'system': {
+        const sysMsg = message as SDKSystemMessage;
+        if (sysMsg.subtype === 'init') {
+          setModel(sysMsg.model);
+          setSessionId(sysMsg.session_id);
+          // Emit start event here with real model (not placeholder 'unknown')
+          options.onEvent?.({
+            type: 'start',
+            timestamp: startTime,
+            model: sysMsg.model,
+          });
         }
+        break;
       }
-    }
 
-    // Handle tool results - just show checkmark, skip content
-    if (msg.type === 'user') {
-      const toolResult = msg.tool_use_result as Record<string, unknown> | undefined;
-      if (toolResult) {
-        return null; // Don't show tool results - too noisy
-      }
-    }
+      case 'assistant': {
+        const assistantMsg = message as SDKAssistantMessage;
+        // Process content blocks for tool usage
+        const content = assistantMsg.message?.content;
+        if (Array.isArray(content)) {
+          for (const block of content) {
+            if (block.type === 'tool_use') {
+              const toolCall: ToolCall = {
+                id: block.id,
+                name: block.name,
+                input: block.input as Record<string, unknown>,
+                timestamp: Date.now(),
+              };
+              toolCalls.push(toolCall);
+              toolStartTimes.set(block.id, Date.now());
 
-    return null;
-  }
-
-  /**
-   * Format a tool call for display
-   */
-  private formatToolCall(name: string, input: Record<string, unknown> | undefined): string | null {
-    if (!input) return `  › ${name}`;
-
-    const dim = '\x1b[2m'; // dim
-    const reset = '\x1b[0m';
-
-    switch (name) {
-      case 'Read': {
-        const path = (input.file_path as string || '').split('/').slice(-2).join('/');
-        return `  › Read ${dim}${path}${reset}`;
-      }
-      case 'Glob': {
-        return `  › Glob ${dim}${input.pattern || ''}${reset}`;
-      }
-      case 'Grep': {
-        return `  › Grep ${dim}"${input.pattern || ''}"${reset}`;
-      }
-      case 'Bash': {
-        const cmd = (input.command as string || '').substring(0, 50);
-        const truncated = (input.command as string || '').length > 50 ? '...' : '';
-        return `  › Bash ${dim}${cmd}${truncated}${reset}`;
-      }
-      case 'Edit':
-      case 'Write': {
-        const path = (input.file_path as string || '').split('/').slice(-2).join('/');
-        return `  › ${name} ${dim}${path}${reset}`;
-      }
-      case 'Task': {
-        return `  › Task ${dim}${input.description || ''}${reset}`;
-      }
-      default:
-        return `  › ${name}`;
-    }
-  }
-
-  /**
-   * Parse tools used from JSON output
-   */
-  private parseToolsUsedFromJson(stdout: string): string[] {
-    const tools: Set<string> = new Set();
-
-    const lines = stdout.split('\n');
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      try {
-        const msg = JSON.parse(line);
-        if (msg.type === 'assistant' && msg.message) {
-          const content = msg.message.content;
-          if (Array.isArray(content)) {
-            for (const part of content) {
-              if (part.type === 'tool_use' && part.name) {
-                tools.add(part.name);
+              options.onEvent?.({
+                type: 'tool_start',
+                tool: toolCall,
+              });
+            } else if (block.type === 'text') {
+              // Final text output - only emit if NOT streaming partial messages
+              // (otherwise we already streamed it via stream_event)
+              if (!includePartialMessages) {
+                options.onEvent?.({
+                  type: 'text_delta',
+                  text: (block as { text: string }).text,
+                });
+              }
+            } else if (block.type === 'thinking') {
+              // Only emit if NOT streaming partial messages (avoid duplicates)
+              if (!includePartialMessages) {
+                options.onEvent?.({
+                  type: 'thinking',
+                  text: (block as { thinking?: string }).thinking || '',
+                });
               }
             }
           }
         }
-      } catch {
-        // Skip invalid JSON lines
+        break;
+      }
+
+      case 'user': {
+        // Tool results come back as user messages
+        const userMsg = message as SDKUserMessage;
+        const toolResult = userMsg.tool_use_result;
+
+        if (isToolUseResult(toolResult) && toolResult.tool_use_id) {
+          const toolId = toolResult.tool_use_id;
+          const startTime = toolStartTimes.get(toolId);
+          const durationMs = startTime ? Date.now() - startTime : 0;
+
+          // Update tool call with duration and result
+          const toolCall = toolCalls.find((t) => t.id === toolId);
+          if (toolCall) {
+            toolCall.durationMs = durationMs;
+            toolCall.success = true;
+            // Capture truncated result for display
+            if (toolResult.content) {
+              toolCall.result = toolResult.content.substring(0, 500);
+            }
+          }
+
+          options.onEvent?.({
+            type: 'tool_end',
+            toolId,
+            success: true,
+            durationMs,
+            result: toolResult.content?.substring(0, 200),
+          });
+        }
+        break;
+      }
+
+      case 'stream_event': {
+        // Partial streaming messages
+        const partialMsg = message as SDKPartialAssistantMessage;
+        const event = partialMsg.event;
+
+        if (event?.type === 'content_block_delta') {
+          const delta = (event as { delta?: { type?: string; text?: string; thinking?: string } }).delta;
+          if (delta?.type === 'text_delta' && delta.text) {
+            options.onEvent?.({
+              type: 'text_delta',
+              text: delta.text,
+            });
+          } else if (delta?.type === 'thinking_delta' && delta.thinking) {
+            options.onEvent?.({
+              type: 'thinking',
+              text: delta.thinking,
+            });
+          }
+        }
+        break;
       }
     }
+  }
 
-    return Array.from(tools);
+  /**
+   * Build AgentResult from SDK result message
+   */
+  private buildResult(
+    resultMsg: SDKResultMessage,
+    toolCalls: ToolCall[],
+    model: string,
+    sessionId: string,
+  ): AgentResult {
+    const usage = resultMsg.usage;
+    const isSuccess = resultMsg.subtype === 'success';
+
+    // Build token usage
+    const tokens = {
+      inputTokens: usage.input_tokens,
+      outputTokens: usage.output_tokens,
+      cacheReadTokens: usage.cache_read_input_tokens ?? 0,
+      cacheWriteTokens: usage.cache_creation_input_tokens ?? 0,
+      totalTokens: usage.input_tokens + usage.output_tokens,
+    };
+
+    // Build per-model usage (defensive: modelUsage may be absent)
+    const modelUsage: AgentResult['modelUsage'] = {};
+    for (const [modelName, mu] of Object.entries(resultMsg.modelUsage ?? {})) {
+      modelUsage[modelName] = {
+        inputTokens: mu.inputTokens,
+        outputTokens: mu.outputTokens,
+        cacheReadTokens: mu.cacheReadInputTokens,
+        cacheWriteTokens: mu.cacheCreationInputTokens,
+        costUsd: mu.costUSD,
+      };
+    }
+
+    return {
+      answer: isSuccess ? (resultMsg as { result: string }).result : '',
+      success: isSuccess && !resultMsg.is_error,
+      error: !isSuccess ? (resultMsg as { errors?: string[] }).errors?.join(', ') : undefined,
+      timedOut: false,
+      durationMs: resultMsg.duration_ms,
+      tokens,
+      costUsd: resultMsg.total_cost_usd,
+      numTurns: resultMsg.num_turns,
+      toolCalls,
+      toolsUsed: [...new Set(toolCalls.map((t) => t.name))],
+      model,
+      modelUsage,
+      raw: {
+        sessionId,
+      },
+    };
   }
 }
 
