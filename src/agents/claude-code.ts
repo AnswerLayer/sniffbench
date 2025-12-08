@@ -238,10 +238,13 @@ export class ClaudeCodeAgent implements AgentWrapper {
                 });
               }
             } else if (block.type === 'thinking') {
-              options.onEvent?.({
-                type: 'thinking',
-                text: (block as { thinking?: string }).thinking || '',
-              });
+              // Only emit if NOT streaming partial messages (avoid duplicates)
+              if (!includePartialMessages) {
+                options.onEvent?.({
+                  type: 'thinking',
+                  text: (block as { thinking?: string }).thinking || '',
+                });
+              }
             }
           }
         }

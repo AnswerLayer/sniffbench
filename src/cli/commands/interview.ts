@@ -332,20 +332,37 @@ async function runInterviewQuestion(
           // Show tool with key input info
           const input = event.tool.input;
           let detail = '';
-          // Extract most useful input field for display
-          if (input.file_path) detail = String(input.file_path).split('/').slice(-2).join('/');
-          else if (input.pattern) detail = String(input.pattern);
-          else if (input.command) detail = String(input.command).substring(0, 50);
-          else if (input.query) detail = String(input.query).substring(0, 40);
-          else if (input.path) detail = String(input.path).split('/').slice(-2).join('/');
 
-          const toolInfo = detail ? `${event.tool.name} ${chalk.dim(detail)}` : event.tool.name;
-          exploration.toolCalls.push(`› ${event.tool.name}`);
+          // Special handling for Task tool - show subagent type and prompt
+          if (event.tool.name === 'Task') {
+            const subagentType = input.subagent_type ? `[${input.subagent_type}]` : '';
+            const desc = input.description || '';
+            const prompt = input.prompt ? String(input.prompt).substring(0, 60) : '';
+            detail = `${subagentType} ${desc}`.trim();
 
-          // Stop spinner and show tool call
-          exploration.spinner.stop();
-          console.log(chalk.cyan(`  › ${toolInfo}`));
-          exploration.spinner.start();
+            exploration.toolCalls.push(`› ${event.tool.name}`);
+            exploration.spinner.stop();
+            console.log(chalk.yellow(`  ⚡ Task ${chalk.bold(subagentType)} ${chalk.dim(desc)}`));
+            if (prompt) {
+              console.log(chalk.dim(`     "${prompt}${String(input.prompt).length > 60 ? '...' : ''}"`));
+            }
+            exploration.spinner.start();
+          } else {
+            // Extract most useful input field for display
+            if (input.file_path) detail = String(input.file_path).split('/').slice(-2).join('/');
+            else if (input.pattern) detail = String(input.pattern);
+            else if (input.command) detail = String(input.command).substring(0, 50);
+            else if (input.query) detail = String(input.query).substring(0, 40);
+            else if (input.path) detail = String(input.path).split('/').slice(-2).join('/');
+
+            const toolInfo = detail ? `${event.tool.name} ${chalk.dim(detail)}` : event.tool.name;
+            exploration.toolCalls.push(`› ${event.tool.name}`);
+
+            // Stop spinner and show tool call
+            exploration.spinner.stop();
+            console.log(chalk.cyan(`  › ${toolInfo}`));
+            exploration.spinner.start();
+          }
 
           const state = EXPLORATION_STATES[exploration.toolCalls.length % EXPLORATION_STATES.length];
           const baseText = `${chalk.bold.hex('#D97706')(agent.displayName)} ${state.color(state.text)}`;
@@ -359,10 +376,23 @@ async function runInterviewQuestion(
         }
 
         case 'thinking': {
-          // Show thinking output
-          if (event.text.trim()) {
+          // Show thinking/reasoning output between tool calls
+          const text = event.text.trim();
+          if (text) {
             exploration.spinner.stop();
-            console.log(chalk.magenta(`  💭 ${event.text.substring(0, 100)}${event.text.length > 100 ? '...' : ''}`));
+            // Show first line or first 150 chars of thinking
+            const firstLine = text.split('\n')[0];
+            const display = firstLine.length > 150
+              ? firstLine.substring(0, 150) + '...'
+              : firstLine;
+            console.log(chalk.magenta(`  💭 ${display}`));
+            // If there's more content, indicate it
+            if (text.includes('\n') || text.length > 150) {
+              const lineCount = text.split('\n').length;
+              if (lineCount > 1) {
+                console.log(chalk.dim(`     (${lineCount} lines of reasoning)`));
+              }
+            }
             exploration.spinner.start();
           }
           break;
