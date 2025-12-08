@@ -15,7 +15,7 @@ import * as readline from 'readline';
 import { box } from '../../utils/ui';
 import { loadCases, getDefaultCasesDir } from '../../cases';
 import { Case } from '../../cases/types';
-import { getAgent, AgentWrapper, AgentResult } from '../../agents';
+import { getAgent, AgentWrapper, AgentResult, AgentEvent } from '../../agents';
 
 /**
  * Exploration status messages - cycles through these while agent works
@@ -268,7 +268,7 @@ async function getAgentResponse(
   caseData: Case,
   agent: AgentWrapper,
   cwd: string,
-  onOutput?: (chunk: string) => void
+  onEvent?: (event: AgentEvent) => void
 ): Promise<AgentResult> {
   // Build the prompt for the agent
   // We frame it as a comprehension question about the codebase
@@ -283,7 +283,7 @@ Be concise but accurate. Focus on the key points with specific file references w
   const result = await agent.run(prompt, {
     cwd,
     timeoutMs: (caseData.expectations?.maxTimeSeconds || 300) * 1000,
-    onOutput,
+    onEvent,
   });
 
   return result;
@@ -324,28 +324,42 @@ async function runInterviewQuestion(
   let textOutputStarted = false;
 
   try {
-    const result = await getAgentResponse(caseData, agent, projectRoot, (chunk) => {
+    const result = await getAgentResponse(caseData, agent, projectRoot, (event) => {
       outputStarted = true;
 
-      // Check if this chunk contains tool calls (lines starting with ›)
-      // Tool calls are formatted like "  › Read src/file.ts"
-      const isToolCall = chunk.trim().startsWith('›');
-
-      if (isToolCall) {
-        // Extract tool call info and update spinner
-        const clean = chunk.trim().replace(/\x1b\[[0-9;]*m/g, '').substring(0, 80);
-        exploration.toolCalls.push(clean);
-        const state = EXPLORATION_STATES[0];
-        const baseText = `${chalk.bold.hex('#D97706')(agent.displayName)} ${state.color(state.text)}`;
-        exploration.spinner.text = `${baseText} ${chalk.dim(`(${exploration.toolCalls.length} tools)`)}`;
-      } else if (chunk.trim()) {
-        // This is text content - stop spinner and stream it
-        if (!textOutputStarted) {
-          textOutputStarted = true;
-          exploration.stop();
-          console.log(chalk.dim('\n  ─────────────────────────────────────────\n'));
+      switch (event.type) {
+        case 'tool_start': {
+          // Update spinner with tool info
+          const toolName = `› ${event.tool.name}`;
+          exploration.toolCalls.push(toolName);
+          const state = EXPLORATION_STATES[0];
+          const baseText = `${chalk.bold.hex('#D97706')(agent.displayName)} ${state.color(state.text)}`;
+          exploration.spinner.text = `${baseText} ${chalk.dim(`(${exploration.toolCalls.length} tools) ${toolName}`)}`;
+          break;
         }
-        process.stdout.write(chunk);
+
+        case 'text_delta': {
+          // Stream text content to stdout
+          if (event.text.trim()) {
+            if (!textOutputStarted) {
+              textOutputStarted = true;
+              exploration.stop();
+              console.log(chalk.dim('\n  ─────────────────────────────────────────\n'));
+            }
+            process.stdout.write(event.text);
+          }
+          break;
+        }
+
+        case 'status': {
+          // Show status updates in spinner
+          exploration.spinner.text = `${chalk.bold.hex('#D97706')(agent.displayName)} ${chalk.cyan(event.message)}`;
+          break;
+        }
+
+        // Ignore other event types for now
+        default:
+          break;
       }
     });
 
