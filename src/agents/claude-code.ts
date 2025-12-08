@@ -116,6 +116,9 @@ export class ClaudeCodeAgent implements AgentWrapper {
       const sdk = await import('@anthropic-ai/claude-agent-sdk');
 
       // Build SDK options
+      // Note: env is passed directly without spreading process.env to avoid leaking secrets.
+      // SDK inherits process.env by default when env is undefined. If caller needs to add
+      // custom vars while preserving the environment, they should explicitly spread process.env.
       const sdkOptions: Options = {
         cwd: options.cwd,
         permissionMode: options.permissionMode || 'acceptEdits',
@@ -125,7 +128,7 @@ export class ClaudeCodeAgent implements AgentWrapper {
         maxTurns: options.maxTurns,
         model: options.model,
         includePartialMessages: options.includePartialMessages ?? true,
-        env: options.env ? { ...process.env, ...options.env } : undefined,
+        env: options.env,
         // Don't load user/project settings - isolation mode
         settingSources: [],
       };
