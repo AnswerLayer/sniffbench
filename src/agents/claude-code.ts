@@ -120,6 +120,9 @@ export class ClaudeCodeAgent implements AgentWrapper {
         abortController.abort();
       }, timeoutMs);
 
+      // Resolve includePartialMessages for consistent use
+      const includePartial = sdkOptions.includePartialMessages ?? true;
+
       // Run the query
       const query = sdk.query({ prompt, options: sdkOptions });
 
@@ -127,7 +130,7 @@ export class ClaudeCodeAgent implements AgentWrapper {
 
       try {
         for await (const message of query) {
-          this.processMessage(message, options, toolCalls, toolStartTimes, (m) => {
+          this.processMessage(message, options, toolCalls, toolStartTimes, includePartial, (m) => {
             model = m;
           }, (s) => {
             sessionId = s;
@@ -187,6 +190,7 @@ export class ClaudeCodeAgent implements AgentWrapper {
     options: AgentRunOptions,
     toolCalls: ToolCall[],
     toolStartTimes: Map<string, number>,
+    includePartialMessages: boolean,
     setModel: (m: string) => void,
     setSessionId: (s: string) => void,
   ): void {
@@ -225,8 +229,9 @@ export class ClaudeCodeAgent implements AgentWrapper {
                 tool: toolCall,
               });
             } else if (block.type === 'text') {
-              // Final text output (not streaming delta)
-              if (!options.includePartialMessages) {
+              // Final text output - only emit if NOT streaming partial messages
+              // (otherwise we already streamed it via stream_event)
+              if (!includePartialMessages) {
                 options.onEvent?.({
                   type: 'text_delta',
                   text: (block as { text: string }).text,
@@ -245,17 +250,26 @@ export class ClaudeCodeAgent implements AgentWrapper {
 
       case 'user': {
         // Tool results come back as user messages
-        const userMsg = message as { tool_use_result?: { tool_use_id?: string } };
+        const userMsg = message as {
+          tool_use_result?: {
+            tool_use_id?: string;
+            content?: string;
+          };
+        };
         if (userMsg.tool_use_result?.tool_use_id) {
           const toolId = userMsg.tool_use_result.tool_use_id;
           const startTime = toolStartTimes.get(toolId);
           const durationMs = startTime ? Date.now() - startTime : 0;
 
-          // Update tool call with duration
+          // Update tool call with duration and result
           const toolCall = toolCalls.find((t) => t.id === toolId);
           if (toolCall) {
             toolCall.durationMs = durationMs;
             toolCall.success = true;
+            // Capture truncated result for display
+            if (userMsg.tool_use_result.content) {
+              toolCall.result = userMsg.tool_use_result.content.substring(0, 500);
+            }
           }
 
           options.onEvent?.({
@@ -263,6 +277,7 @@ export class ClaudeCodeAgent implements AgentWrapper {
             toolId,
             success: true,
             durationMs,
+            result: userMsg.tool_use_result.content?.substring(0, 200),
           });
         }
         break;
@@ -274,11 +289,16 @@ export class ClaudeCodeAgent implements AgentWrapper {
         const event = partialMsg.event;
 
         if (event?.type === 'content_block_delta') {
-          const delta = (event as { delta?: { type?: string; text?: string } }).delta;
+          const delta = (event as { delta?: { type?: string; text?: string; thinking?: string } }).delta;
           if (delta?.type === 'text_delta' && delta.text) {
             options.onEvent?.({
               type: 'text_delta',
               text: delta.text,
+            });
+          } else if (delta?.type === 'thinking_delta' && delta.thinking) {
+            options.onEvent?.({
+              type: 'thinking',
+              text: delta.thinking,
             });
           }
         }

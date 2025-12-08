@@ -38,6 +38,8 @@ export interface ToolCall {
   durationMs?: number;
   /** Whether tool execution succeeded */
   success?: boolean;
+  /** Truncated result from tool (for display) */
+  result?: string;
 }
 
 /**
@@ -48,7 +50,7 @@ export type AgentEvent =
   | { type: 'start'; timestamp: number; model: string }
   | { type: 'text_delta'; text: string }
   | { type: 'tool_start'; tool: ToolCall }
-  | { type: 'tool_end'; toolId: string; success: boolean; durationMs: number }
+  | { type: 'tool_end'; toolId: string; success: boolean; durationMs: number; result?: string }
   | { type: 'thinking'; text: string }
   | { type: 'error'; message: string; code?: string }
   | { type: 'status'; message: string }

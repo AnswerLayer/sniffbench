@@ -329,12 +329,42 @@ async function runInterviewQuestion(
 
       switch (event.type) {
         case 'tool_start': {
-          // Update spinner with tool info
-          const toolName = `› ${event.tool.name}`;
-          exploration.toolCalls.push(toolName);
-          const state = EXPLORATION_STATES[0];
+          // Show tool with key input info
+          const input = event.tool.input;
+          let detail = '';
+          // Extract most useful input field for display
+          if (input.file_path) detail = String(input.file_path).split('/').slice(-2).join('/');
+          else if (input.pattern) detail = String(input.pattern);
+          else if (input.command) detail = String(input.command).substring(0, 50);
+          else if (input.query) detail = String(input.query).substring(0, 40);
+          else if (input.path) detail = String(input.path).split('/').slice(-2).join('/');
+
+          const toolInfo = detail ? `${event.tool.name} ${chalk.dim(detail)}` : event.tool.name;
+          exploration.toolCalls.push(`› ${event.tool.name}`);
+
+          // Stop spinner and show tool call
+          exploration.spinner.stop();
+          console.log(chalk.cyan(`  › ${toolInfo}`));
+          exploration.spinner.start();
+
+          const state = EXPLORATION_STATES[exploration.toolCalls.length % EXPLORATION_STATES.length];
           const baseText = `${chalk.bold.hex('#D97706')(agent.displayName)} ${state.color(state.text)}`;
-          exploration.spinner.text = `${baseText} ${chalk.dim(`(${exploration.toolCalls.length} tools) ${toolName}`)}`;
+          exploration.spinner.text = `${baseText} ${chalk.dim(`(${exploration.toolCalls.length} tools)`)}`;
+          break;
+        }
+
+        case 'tool_end': {
+          // Could show truncated result here if desired
+          break;
+        }
+
+        case 'thinking': {
+          // Show thinking output
+          if (event.text.trim()) {
+            exploration.spinner.stop();
+            console.log(chalk.magenta(`  💭 ${event.text.substring(0, 100)}${event.text.length > 100 ? '...' : ''}`));
+            exploration.spinner.start();
+          }
           break;
         }
 
