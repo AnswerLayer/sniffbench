@@ -20,8 +20,26 @@ type SDKMessage = import('@anthropic-ai/claude-agent-sdk').SDKMessage;
 type SDKResultMessage = import('@anthropic-ai/claude-agent-sdk').SDKResultMessage;
 type SDKAssistantMessage = import('@anthropic-ai/claude-agent-sdk').SDKAssistantMessage;
 type SDKSystemMessage = import('@anthropic-ai/claude-agent-sdk').SDKSystemMessage;
+type SDKUserMessage = import('@anthropic-ai/claude-agent-sdk').SDKUserMessage;
 type SDKPartialAssistantMessage = import('@anthropic-ai/claude-agent-sdk').SDKPartialAssistantMessage;
 type Options = import('@anthropic-ai/claude-agent-sdk').Options;
+
+/**
+ * Type guard for tool_use_result shape (SDK types this as `unknown`)
+ */
+interface ToolUseResult {
+  tool_use_id?: string;
+  content?: string;
+}
+
+function isToolUseResult(value: unknown): value is ToolUseResult {
+  if (!value || typeof value !== 'object') return false;
+  const obj = value as Record<string, unknown>;
+  return (
+    (obj.tool_use_id === undefined || typeof obj.tool_use_id === 'string') &&
+    (obj.content === undefined || typeof obj.content === 'string')
+  );
+}
 
 /**
  * Claude Code agent wrapper using the official SDK
@@ -253,14 +271,11 @@ export class ClaudeCodeAgent implements AgentWrapper {
 
       case 'user': {
         // Tool results come back as user messages
-        const userMsg = message as {
-          tool_use_result?: {
-            tool_use_id?: string;
-            content?: string;
-          };
-        };
-        if (userMsg.tool_use_result?.tool_use_id) {
-          const toolId = userMsg.tool_use_result.tool_use_id;
+        const userMsg = message as SDKUserMessage;
+        const toolResult = userMsg.tool_use_result;
+
+        if (isToolUseResult(toolResult) && toolResult.tool_use_id) {
+          const toolId = toolResult.tool_use_id;
           const startTime = toolStartTimes.get(toolId);
           const durationMs = startTime ? Date.now() - startTime : 0;
 
@@ -270,8 +285,8 @@ export class ClaudeCodeAgent implements AgentWrapper {
             toolCall.durationMs = durationMs;
             toolCall.success = true;
             // Capture truncated result for display
-            if (userMsg.tool_use_result.content) {
-              toolCall.result = userMsg.tool_use_result.content.substring(0, 500);
+            if (toolResult.content) {
+              toolCall.result = toolResult.content.substring(0, 500);
             }
           }
 
@@ -280,7 +295,7 @@ export class ClaudeCodeAgent implements AgentWrapper {
             toolId,
             success: true,
             durationMs,
-            result: userMsg.tool_use_result.content?.substring(0, 200),
+            result: toolResult.content?.substring(0, 200),
           });
         }
         break;
