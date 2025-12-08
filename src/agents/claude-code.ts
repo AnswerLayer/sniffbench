@@ -357,9 +357,9 @@ export class ClaudeCodeAgent implements AgentWrapper {
       totalTokens: usage.input_tokens + usage.output_tokens,
     };
 
-    // Build per-model usage
+    // Build per-model usage (defensive: modelUsage may be absent)
     const modelUsage: AgentResult['modelUsage'] = {};
-    for (const [modelName, mu] of Object.entries(resultMsg.modelUsage)) {
+    for (const [modelName, mu] of Object.entries(resultMsg.modelUsage ?? {})) {
       modelUsage[modelName] = {
         inputTokens: mu.inputTokens,
         outputTokens: mu.outputTokens,
