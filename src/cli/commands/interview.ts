@@ -8,13 +8,93 @@
  */
 
 import chalk from 'chalk';
-import ora from 'ora';
+import ora, { Ora } from 'ora';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as readline from 'readline';
 import { box } from '../../utils/ui';
 import { loadCases, getDefaultCasesDir } from '../../cases';
 import { Case } from '../../cases/types';
+import { getAgent, AgentWrapper, AgentResult } from '../../agents';
+
+/**
+ * Exploration status messages - cycles through these while agent works
+ */
+const EXPLORATION_STATES = [
+  { text: 'Reading files', color: chalk.cyan },
+  { text: 'Scanning structure', color: chalk.blue },
+  { text: 'Analyzing code', color: chalk.magenta },
+  { text: 'Finding patterns', color: chalk.yellow },
+  { text: 'Building context', color: chalk.green },
+  { text: 'Connecting dots', color: chalk.cyan },
+];
+
+/**
+ * Create an animated exploration spinner that shows tool activity
+ */
+function createExplorationSpinner(agentName: string): {
+  spinner: Ora;
+  stop: () => void;
+  updateWithToolCall: (toolInfo: string) => void;
+  toolCalls: string[];
+} {
+  let stateIndex = 0;
+  const toolCalls: string[] = [];
+
+  const getBaseText = () => {
+    const state = EXPLORATION_STATES[stateIndex];
+    return `${chalk.bold.hex('#D97706')(agentName)} ${state.color(state.text)}`;
+  };
+
+  const spinner = ora({
+    text: getBaseText(),
+    spinner: {
+      interval: 80,
+      frames: ['◐', '◓', '◑', '◒'],
+    },
+    color: 'yellow',
+  }).start();
+
+  // Cycle through states
+  const interval = setInterval(() => {
+    stateIndex = (stateIndex + 1) % EXPLORATION_STATES.length;
+    const toolCount = toolCalls.length;
+    const lastTool = toolCalls[toolCalls.length - 1];
+    if (toolCount > 0 && lastTool) {
+      spinner.text = `${getBaseText()} ${chalk.dim(`(${toolCount} tools) ${lastTool}`)}`;
+    } else {
+      spinner.text = getBaseText();
+    }
+  }, 2000);
+
+  // Update spinner to show tool call info (only actual tool calls, not text output)
+  const updateWithToolCall = (toolInfo: string) => {
+    if (!toolInfo.trim()) return;
+
+    // Only capture lines that are actual tool calls (formatted by claude-code.ts)
+    // Tool calls look like: "  › Read src/file.ts" or "  › Glob **/*.ts"
+    const lines = toolInfo.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('›')) {
+        // Strip ANSI codes for clean storage
+        const clean = trimmed.replace(/\x1b\[[0-9;]*m/g, '').substring(0, 80);
+        toolCalls.push(clean);
+        spinner.text = `${getBaseText()} ${chalk.dim(`(${toolCalls.length} tools) ${clean}`)}`;
+      }
+    }
+  };
+
+  return {
+    spinner,
+    toolCalls,
+    updateWithToolCall,
+    stop: () => {
+      clearInterval(interval);
+      spinner.stop();
+    },
+  };
+}
 
 interface InterviewOptions {
   cases?: string;
@@ -84,6 +164,10 @@ function saveBaselines(projectRoot: string, store: BaselineStore): void {
  * Create readline interface for user input
  */
 function createPrompt(): readline.Interface {
+  // Ensure stdin is flowing
+  if (process.stdin.isPaused()) {
+    process.stdin.resume();
+  }
   return readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -91,12 +175,47 @@ function createPrompt(): readline.Interface {
 }
 
 /**
- * Ask user a question and get response
+ * Check if readline is still usable
  */
-async function ask(rl: readline.Interface, question: string): Promise<string> {
-  return new Promise((resolve) => {
+function isReadlineOpen(rl: readline.Interface): boolean {
+  // @ts-ignore - accessing internal property to check state
+  return rl.terminal !== undefined && !rl.closed;
+}
+
+/** Default timeout for user input (5 minutes) */
+const USER_INPUT_TIMEOUT_MS = 5 * 60 * 1000;
+
+/**
+ * Ask user a question and get response with timeout
+ */
+async function ask(rl: readline.Interface, question: string, timeoutMs: number = USER_INPUT_TIMEOUT_MS): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let answered = false;
+
+    const timeout = setTimeout(() => {
+      if (!answered) {
+        answered = true;
+        resolve(''); // Return empty on timeout
+      }
+    }, timeoutMs);
+
+    // Handle readline close (e.g., stdin EOF)
+    const onClose = () => {
+      if (!answered) {
+        answered = true;
+        clearTimeout(timeout);
+        resolve('');
+      }
+    };
+    rl.once('close', onClose);
+
     rl.question(question, (answer) => {
-      resolve(answer.trim());
+      if (!answered) {
+        answered = true;
+        clearTimeout(timeout);
+        rl.removeListener('close', onClose);
+        resolve(answer.trim());
+      }
     });
   });
 }
@@ -143,40 +262,44 @@ function formatAnswer(answer: string, maxLines: number = 30): string {
 }
 
 /**
- * Simulate agent response (placeholder - will integrate with real agent)
+ * Run agent on a comprehension question
  */
-async function getAgentResponse(caseData: Case, _agent: string): Promise<string> {
-  // TODO: Integrate with actual agent wrapper
-  // For now, return a placeholder that indicates the agent would explore
+async function getAgentResponse(
+  caseData: Case,
+  agent: AgentWrapper,
+  cwd: string,
+  onOutput?: (chunk: string) => void
+): Promise<AgentResult> {
+  // Build the prompt for the agent
+  // We frame it as a comprehension question about the codebase
+  const prompt = `You are being evaluated on your understanding of this codebase.
 
-  return `[Agent would explore the codebase and answer:]
+Please answer the following question by exploring the codebase:
 
 ${caseData.prompt}
 
----
-This is a placeholder response. In the full implementation, the agent
-(${_agent}) would:
+Be concise but accurate. Focus on the key points with specific file references where relevant. Aim for a clear, well-organized answer that a developer could quickly scan.`;
 
-1. Analyze the codebase using allowed tools (read, grep, glob, search)
-2. Build understanding of the relevant areas
-3. Provide a detailed answer based on what it finds
+  const result = await agent.run(prompt, {
+    cwd,
+    timeoutMs: (caseData.expectations?.maxTimeSeconds || 300) * 1000,
+    onOutput,
+  });
 
-To implement:
-- Connect to Claude Code SDK or other agent wrappers
-- Capture the agent's exploration and final answer
-- Track tool usage for efficiency metrics`;
+  return result;
 }
 
 /**
  * Run a single interview question
+ * Returns the readline interface (may be recreated if stdin was disrupted)
  */
 async function runInterviewQuestion(
   caseData: Case,
-  agent: string,
+  agent: AgentWrapper,
   rl: readline.Interface,
   store: BaselineStore,
   projectRoot: string
-): Promise<{ grade: number; skipped: boolean }> {
+): Promise<{ grade: number; skipped: boolean; durationMs?: number; rl: readline.Interface }> {
   const existingBaseline = store.baselines[caseData.id];
 
   // Show the question
@@ -187,22 +310,85 @@ async function runInterviewQuestion(
     const regrade = await ask(rl, chalk.cyan('  Re-run and re-grade? (y/N): '));
 
     if (regrade.toLowerCase() !== 'y') {
-      return { grade: existingBaseline.grade, skipped: true };
+      return { grade: existingBaseline.grade, skipped: true, rl };
     }
   }
 
-  // Get agent's response
-  const spinner = ora('Agent is exploring the codebase...').start();
+  // Get agent's response - stream output live with animated spinner at bottom
+  console.log('');
+  const exploration = createExplorationSpinner(agent.displayName);
+
+  let outputStarted = false;
+  const startTime = Date.now();
+
+  let textOutputStarted = false;
 
   try {
-    const answer = await getAgentResponse(caseData, agent);
-    spinner.succeed('Agent completed');
+    const result = await getAgentResponse(caseData, agent, projectRoot, (chunk) => {
+      outputStarted = true;
 
-    // Display the answer
-    console.log(chalk.dim('\n  ─────────────────────────────────────────'));
-    console.log(chalk.bold('  Agent\'s Answer:\n'));
-    console.log(formatAnswer(answer).split('\n').map(l => '  ' + l).join('\n'));
-    console.log(chalk.dim('\n  ─────────────────────────────────────────'));
+      // Check if this chunk contains tool calls (lines starting with ›)
+      // Tool calls are formatted like "  › Read src/file.ts"
+      const isToolCall = chunk.trim().startsWith('›');
+
+      if (isToolCall) {
+        // Extract tool call info and update spinner
+        const clean = chunk.trim().replace(/\x1b\[[0-9;]*m/g, '').substring(0, 80);
+        exploration.toolCalls.push(clean);
+        const state = EXPLORATION_STATES[0];
+        const baseText = `${chalk.bold.hex('#D97706')(agent.displayName)} ${state.color(state.text)}`;
+        exploration.spinner.text = `${baseText} ${chalk.dim(`(${exploration.toolCalls.length} tools)`)}`;
+      } else if (chunk.trim()) {
+        // This is text content - stop spinner and stream it
+        if (!textOutputStarted) {
+          textOutputStarted = true;
+          exploration.stop();
+          console.log(chalk.dim('\n  ─────────────────────────────────────────\n'));
+        }
+        process.stdout.write(chunk);
+      }
+    });
+
+    // Ensure spinner is stopped
+    if (!textOutputStarted) {
+      exploration.stop();
+    }
+
+    const durationSec = ((Date.now() - startTime) / 1000).toFixed(1);
+    if (textOutputStarted) {
+      console.log(chalk.dim('\n\n  ─────────────────────────────────────────'));
+    } else {
+      console.log(chalk.dim('\n  ─────────────────────────────────────────'));
+    }
+
+    if (result.timedOut) {
+      console.log(chalk.yellow(`\n  ✗ ${agent.displayName} timed out after ${durationSec}s`));
+      console.log(chalk.yellow('  The agent took too long. Consider increasing the timeout.'));
+      return { grade: 0, skipped: true, durationMs: result.durationMs, rl };
+    }
+
+    if (!result.success) {
+      console.log(chalk.red(`\n  ✗ ${agent.displayName} failed: ${result.error}`));
+      return { grade: 0, skipped: true, durationMs: result.durationMs, rl };
+    }
+
+    console.log(chalk.green(`\n  ✓ ${agent.displayName} completed in ${durationSec}s`));
+
+    // Show tools used if available
+    if (result.toolsUsed && result.toolsUsed.length > 0) {
+      console.log(chalk.dim(`\n  Tools used: ${result.toolsUsed.join(', ')}`));
+    }
+
+    // Recreate readline after agent run - stdin may have been disrupted
+    // by the spawned claude process
+    if (!isReadlineOpen(rl)) {
+      rl.close();
+      rl = createPrompt();
+    }
+    // Ensure stdin is flowing
+    if (process.stdin.isPaused()) {
+      process.stdin.resume();
+    }
 
     // Show grading scale and ask for grade
     showGradingScale();
@@ -215,7 +401,7 @@ async function runInterviewQuestion(
     store.baselines[caseData.id] = {
       caseId: caseData.id,
       question: caseData.prompt,
-      answer,
+      answer: result.answer,
       grade,
       gradedAt: new Date().toISOString(),
       gradedBy: 'human',
@@ -226,10 +412,11 @@ async function runInterviewQuestion(
 
     console.log(chalk.green(`\n  ✓ Baseline saved (${grade}/10)`));
 
-    return { grade, skipped: false };
+    return { grade, skipped: false, durationMs: result.durationMs, rl };
   } catch (err) {
-    spinner.fail(`Failed: ${(err as Error).message}`);
-    return { grade: 0, skipped: true };
+    exploration.stop();
+    console.log(chalk.red(`\n  ✗ Failed: ${(err as Error).message}`));
+    return { grade: 0, skipped: true, rl };
   }
 }
 
@@ -247,8 +434,31 @@ export async function interviewCommand(options: InterviewOptions) {
     'sniff interview'
   ));
 
+  // Get the agent
+  let agent: AgentWrapper;
+  try {
+    agent = getAgent(options.agent);
+  } catch (err) {
+    console.log(chalk.red(`\n  Error: ${(err as Error).message}`));
+    return;
+  }
+
+  // Check agent availability
+  const spinner = ora(`Checking ${agent.displayName} availability...`).start();
+  const available = await agent.isAvailable();
+
+  if (!available) {
+    spinner.fail(`${agent.displayName} is not available`);
+    console.log(chalk.yellow(`\n  Make sure '${options.agent}' is installed and in your PATH.`));
+    console.log(chalk.dim(`  For Claude Code: https://claude.ai/code`));
+    return;
+  }
+
+  const version = await agent.getVersion();
+  spinner.succeed(`${agent.displayName} ${version ? `(${version})` : ''} is ready`);
+
   // Load comprehension cases
-  const spinner = ora('Loading comprehension cases...').start();
+  spinner.start('Loading comprehension cases...');
   const casesDir = getDefaultCasesDir();
 
   const cases = await loadCases(casesDir, {
@@ -283,8 +493,8 @@ export async function interviewCommand(options: InterviewOptions) {
     console.log(`  ${status}  ${chalk.bold(c.id)}: ${c.title}`);
   }
 
-  // Create prompt
-  const rl = createPrompt();
+  // Create prompt - may be recreated if stdin is disrupted during agent run
+  let rl = createPrompt();
 
   try {
     // Ask if user wants to continue
@@ -307,8 +517,10 @@ export async function interviewCommand(options: InterviewOptions) {
       console.log(chalk.bold(`\n  [${i + 1}/${cases.length}] ${caseData.title}`));
       console.log(chalk.dim(`  Difficulty: ${caseData.difficulty}\n`));
 
-      const result = await runInterviewQuestion(caseData, options.agent, rl, store, projectRoot);
-      results.push({ caseId: caseData.id, ...result });
+      const result = await runInterviewQuestion(caseData, agent, rl, store, projectRoot);
+      // Update rl in case it was recreated after agent run
+      rl = result.rl;
+      results.push({ caseId: caseData.id, grade: result.grade, skipped: result.skipped });
 
       if (i < cases.length - 1) {
         const next = await ask(rl, chalk.cyan('\n  Continue to next question? (Y/n/q to quit): '));
