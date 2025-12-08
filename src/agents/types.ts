@@ -199,6 +199,37 @@ export interface AgentRegistry {
 }
 
 /**
+ * Computed behavior metrics from agent execution
+ * These analyze HOW the agent works, not just what it produces
+ */
+export interface BehaviorMetrics {
+  /** Total tokens consumed */
+  totalTokens: number;
+  /** Number of tool calls */
+  toolCount: number;
+  /** Total cost in USD */
+  costUsd: number;
+  /** (Read+Glob+Grep calls) / total tools - research vs action */
+  explorationRatio: number;
+  /** Cache read tokens / total input tokens - context reuse */
+  cacheHitRatio: number;
+  /** Average tool execution time in ms (0 if timing unavailable) */
+  avgToolDurationMs: number;
+  /** Tokens per tool call */
+  tokensPerTool: number;
+  /** Tokens per Read tool call (file read efficiency) */
+  tokensPerRead: number;
+  /** Number of Read tool calls */
+  readCount: number;
+  /** Raw input tokens (non-cached) */
+  inputTokens: number;
+  /** Raw cache read tokens */
+  cacheReadTokens: number;
+  /** Raw cache write tokens */
+  cacheWriteTokens: number;
+}
+
+/**
  * Create empty token usage object
  */
 export function emptyTokenUsage(): TokenUsage {

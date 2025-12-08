@@ -16,6 +16,7 @@ import { box } from '../../utils/ui';
 import { loadCases, getDefaultCasesDir } from '../../cases';
 import { Case } from '../../cases/types';
 import { getAgent, AgentWrapper, AgentResult, AgentEvent } from '../../agents';
+import { computeBehaviorMetrics, formatBehaviorMetrics } from '../../metrics';
 
 /**
  * Exploration status messages - cycles through these while agent works
@@ -111,6 +112,20 @@ interface Baseline {
   gradedAt: string;
   gradedBy: string;
   notes?: string;
+  behaviorMetrics?: {
+    totalTokens: number;
+    toolCount: number;
+    costUsd: number;
+    explorationRatio: number;
+    cacheHitRatio: number;
+    avgToolDurationMs: number;
+    tokensPerTool: number;
+    tokensPerRead: number;
+    readCount: number;
+    inputTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
+  };
 }
 
 interface BaselineStore {
@@ -341,12 +356,12 @@ async function runInterviewQuestion(
             detail = `${subagentType} ${desc}`.trim();
 
             exploration.toolCalls.push(`› ${event.tool.name}`);
-            exploration.spinner.stop();
-            console.log(chalk.yellow(`  ⚡ Task ${chalk.bold(subagentType)} ${chalk.dim(desc)}`));
+            if (!textOutputStarted) exploration.spinner.stop();
+            console.log(chalk.yellow(`\n  ⚡ Task ${chalk.bold(subagentType)} ${chalk.dim(desc)}`));
             if (prompt) {
               console.log(chalk.dim(`     "${prompt}${String(input.prompt).length > 60 ? '...' : ''}"`));
             }
-            exploration.spinner.start();
+            if (!textOutputStarted) exploration.spinner.start();
           } else {
             // Extract most useful input field for display
             if (input.file_path) detail = String(input.file_path).split('/').slice(-2).join('/');
@@ -358,15 +373,17 @@ async function runInterviewQuestion(
             const toolInfo = detail ? `${event.tool.name} ${chalk.dim(detail)}` : event.tool.name;
             exploration.toolCalls.push(`› ${event.tool.name}`);
 
-            // Stop spinner and show tool call
-            exploration.spinner.stop();
-            console.log(chalk.cyan(`  › ${toolInfo}`));
-            exploration.spinner.start();
+            // Stop spinner, show tool call, restart only if text hasn't started
+            if (!textOutputStarted) exploration.spinner.stop();
+            console.log(chalk.cyan(`${textOutputStarted ? '\n' : ''}  › ${toolInfo}`));
+            if (!textOutputStarted) exploration.spinner.start();
           }
 
-          const state = EXPLORATION_STATES[exploration.toolCalls.length % EXPLORATION_STATES.length];
-          const baseText = `${chalk.bold.hex('#D97706')(agent.displayName)} ${state.color(state.text)}`;
-          exploration.spinner.text = `${baseText} ${chalk.dim(`(${exploration.toolCalls.length} tools)`)}`;
+          if (!textOutputStarted) {
+            const state = EXPLORATION_STATES[exploration.toolCalls.length % EXPLORATION_STATES.length];
+            const baseText = `${chalk.bold.hex('#D97706')(agent.displayName)} ${state.color(state.text)}`;
+            exploration.spinner.text = `${baseText} ${chalk.dim(`(${exploration.toolCalls.length} tools)`)}`;
+          }
           break;
         }
 
@@ -379,13 +396,13 @@ async function runInterviewQuestion(
           // Show thinking/reasoning output between tool calls
           const text = event.text.trim();
           if (text) {
-            exploration.spinner.stop();
+            if (!textOutputStarted) exploration.spinner.stop();
             // Show first line or first 150 chars of thinking
             const firstLine = text.split('\n')[0];
             const display = firstLine.length > 150
               ? firstLine.substring(0, 150) + '...'
               : firstLine;
-            console.log(chalk.magenta(`  💭 ${display}`));
+            console.log(chalk.magenta(`${textOutputStarted ? '\n' : ''}  💭 ${display}`));
             // If there's more content, indicate it
             if (text.includes('\n') || text.length > 150) {
               const lineCount = text.split('\n').length;
@@ -393,7 +410,7 @@ async function runInterviewQuestion(
                 console.log(chalk.dim(`     (${lineCount} lines of reasoning)`));
               }
             }
-            exploration.spinner.start();
+            if (!textOutputStarted) exploration.spinner.start();
           }
           break;
         }
@@ -412,8 +429,10 @@ async function runInterviewQuestion(
         }
 
         case 'status': {
-          // Show status updates in spinner
-          exploration.spinner.text = `${chalk.bold.hex('#D97706')(agent.displayName)} ${chalk.cyan(event.message)}`;
+          // Only update spinner if text hasn't started
+          if (!textOutputStarted) {
+            exploration.spinner.text = `${chalk.bold.hex('#D97706')(agent.displayName)} ${chalk.cyan(event.message)}`;
+          }
           break;
         }
 
@@ -446,12 +465,17 @@ async function runInterviewQuestion(
       return { grade: 0, skipped: true, durationMs: result.durationMs, rl };
     }
 
-    console.log(chalk.green(`\n  ✓ ${agent.displayName} completed in ${durationSec}s`));
+    console.log(chalk.green(`\n  ✓ ${agent.displayName} completed in ${durationSec}s`) + chalk.dim(` (${result.model})`));
 
     // Show tools used if available
     if (result.toolsUsed && result.toolsUsed.length > 0) {
       console.log(chalk.dim(`\n  Tools used: ${result.toolsUsed.join(', ')}`));
     }
+
+    // Show behavior metrics
+    const behaviorMetrics = computeBehaviorMetrics(result);
+    console.log(chalk.bold('\n  Behavior Metrics:'));
+    console.log(formatBehaviorMetrics(behaviorMetrics));
 
     // Recreate readline after agent run - stdin may have been disrupted
     // by the spawned claude process
@@ -480,6 +504,7 @@ async function runInterviewQuestion(
       gradedAt: new Date().toISOString(),
       gradedBy: 'human',
       notes: notes || undefined,
+      behaviorMetrics,
     };
 
     saveBaselines(projectRoot, store);
