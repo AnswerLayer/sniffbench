@@ -108,9 +108,6 @@ export class ClaudeCodeAgent implements AgentWrapper {
     let model = 'unknown';
     let sessionId = '';
 
-    // Emit start event
-    options.onEvent?.({ type: 'start', timestamp: startTime, model });
-
     try {
       // Dynamic import of ESM SDK
       const sdk = await import('@anthropic-ai/claude-agent-sdk');
@@ -151,7 +148,7 @@ export class ClaudeCodeAgent implements AgentWrapper {
 
       try {
         for await (const message of query) {
-          this.processMessage(message, options, toolCalls, toolStartTimes, includePartial, (m) => {
+          this.processMessage(message, options, toolCalls, toolStartTimes, includePartial, startTime, (m) => {
             model = m;
           }, (s) => {
             sessionId = s;
@@ -220,6 +217,7 @@ export class ClaudeCodeAgent implements AgentWrapper {
     toolCalls: ToolCall[],
     toolStartTimes: Map<string, number>,
     includePartialMessages: boolean,
+    startTime: number,
     setModel: (m: string) => void,
     setSessionId: (s: string) => void,
   ): void {
@@ -229,9 +227,11 @@ export class ClaudeCodeAgent implements AgentWrapper {
         if (sysMsg.subtype === 'init') {
           setModel(sysMsg.model);
           setSessionId(sysMsg.session_id);
+          // Emit start event here with real model (not placeholder 'unknown')
           options.onEvent?.({
-            type: 'status',
-            message: `Initialized with model ${sysMsg.model}`,
+            type: 'start',
+            timestamp: startTime,
+            model: sysMsg.model,
           });
         }
         break;
