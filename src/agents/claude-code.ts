@@ -179,8 +179,16 @@ export class ClaudeCodeAgent implements AgentWrapper {
       return errorResult;
 
     } catch (error) {
-      const isTimeout = error instanceof Error && error.name === 'AbortError';
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      // Check for AbortError by name (DOMException may not inherit from Error)
+      const errorName = error && typeof error === 'object' && 'name' in error
+        ? (error as { name: unknown }).name
+        : undefined;
+      const isTimeout = errorName === 'AbortError';
+      const errorMessage = error instanceof Error
+        ? error.message
+        : (error && typeof error === 'object' && 'message' in error)
+          ? String((error as { message: unknown }).message)
+          : String(error);
 
       options.onEvent?.({
         type: 'error',
