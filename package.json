@@ -1,6 +1,6 @@
 {
   "name": "sniffbench",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A benchmark suite for coding agents. Think pytest, but for evaluating AI assistants.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
