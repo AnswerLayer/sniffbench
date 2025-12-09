@@ -123,7 +123,7 @@ export class ClaudeCodeAgent implements AgentWrapper {
         disallowedTools: options.disallowedTools,
         maxBudgetUsd: options.maxBudgetUsd,
         maxTurns: options.maxTurns,
-        model: options.model,
+        model: options.model || 'claude-haiku-4-5-20251001',
         includePartialMessages: options.includePartialMessages ?? true,
         env: options.env,
         // Don't load user/project settings - isolation mode
