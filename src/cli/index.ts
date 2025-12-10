@@ -113,6 +113,7 @@ program
   .option('--agent <name>', 'Agent to evaluate', 'claude-code')
   .option('--cases <cases>', 'Specific case IDs to run (comma-separated)')
   .option('--output <dir>', 'Output directory for results', 'results')
+  .option('--compare', 'Compare new responses against existing baselines')
   .action(interviewCommand);
 
 program.parse();

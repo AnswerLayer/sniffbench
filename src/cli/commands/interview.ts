@@ -102,6 +102,7 @@ interface InterviewOptions {
   agent: string;
   output: string;
   baseline?: boolean;
+  compare?: boolean;
 }
 
 interface Baseline {
@@ -173,6 +174,72 @@ function saveBaselines(projectRoot: string, store: BaselineStore): void {
 
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(storePath, JSON.stringify(store, null, 2));
+}
+
+/**
+ * Format a metric delta with color coding
+ * @param label - metric label
+ * @param oldVal - baseline value
+ * @param newVal - new value
+ * @param lowerIsBetter - if true, negative change is good (e.g., tokens, cost)
+ */
+function formatMetricDelta(
+  label: string,
+  oldVal: number,
+  newVal: number,
+  lowerIsBetter: boolean = false
+): string {
+  const delta = newVal - oldVal;
+  const pctChange = oldVal > 0 ? ((delta / oldVal) * 100) : 0;
+  const pctStr = pctChange >= 0 ? `+${pctChange.toFixed(1)}%` : `${pctChange.toFixed(1)}%`;
+
+  let color: typeof chalk.green;
+  if (delta === 0) {
+    color = chalk.dim;
+  } else if ((delta < 0 && lowerIsBetter) || (delta > 0 && !lowerIsBetter)) {
+    color = chalk.green;
+  } else {
+    color = chalk.red;
+  }
+
+  const arrow = delta > 0 ? '↑' : delta < 0 ? '↓' : '→';
+
+  return `${label}: ${oldVal.toLocaleString()} → ${newVal.toLocaleString()} ${color(`${arrow} ${pctStr}`)}`;
+}
+
+/**
+ * Display metrics comparison between baseline and new result
+ */
+function displayMetricsComparison(
+  baseline: Baseline['behaviorMetrics'],
+  newMetrics: Baseline['behaviorMetrics']
+): void {
+  if (!baseline || !newMetrics) {
+    console.log(chalk.dim('    No metrics available for comparison'));
+    return;
+  }
+
+  console.log(chalk.bold('\n  Metrics Comparison:'));
+  console.log(`    ${formatMetricDelta('Tokens', baseline.totalTokens, newMetrics.totalTokens, true)}`);
+  console.log(`    ${formatMetricDelta('Tools', baseline.toolCount, newMetrics.toolCount, true)}`);
+  console.log(`    ${formatMetricDelta('Cost', baseline.costUsd * 10000, newMetrics.costUsd * 10000, true).replace('Cost', 'Cost ($×10⁴)')}`);
+  console.log(`    ${formatMetricDelta('Cache hits', Math.round(baseline.cacheHitRatio * 100), Math.round(newMetrics.cacheHitRatio * 100), false)}%`);
+}
+
+/**
+ * Comparison result for a single case
+ */
+interface ComparisonResult {
+  caseId: string;
+  title: string;
+  baselineGrade: number;
+  baselineAnswer: string;
+  newAnswer: string;
+  baselineMetrics?: Baseline['behaviorMetrics'];
+  newMetrics?: Baseline['behaviorMetrics'];
+  durationMs?: number;
+  success: boolean;
+  error?: string;
 }
 
 /**
@@ -520,18 +587,220 @@ async function runInterviewQuestion(
 }
 
 /**
+ * Run a single comparison case (no human grading)
+ */
+async function runComparisonCase(
+  caseData: Case,
+  agent: AgentWrapper,
+  baseline: Baseline,
+  projectRoot: string
+): Promise<ComparisonResult> {
+  // Show the question
+  console.log(box(caseData.prompt, `Question: ${caseData.title}`));
+  console.log(chalk.dim(`  Baseline grade: ${baseline.grade}/10 (graded: ${baseline.gradedAt.split('T')[0]})`));
+
+  // Get agent's response with animated spinner
+  console.log('');
+  const exploration = createExplorationSpinner(agent.displayName);
+  const startTime = Date.now();
+  let textOutputStarted = false;
+
+  try {
+    const result = await getAgentResponse(caseData, agent, projectRoot, (event) => {
+      switch (event.type) {
+        case 'tool_start': {
+          const input = event.tool.input;
+          let detail = '';
+
+          if (event.tool.name === 'Task') {
+            const subagentType = input.subagent_type ? `[${input.subagent_type}]` : '';
+            const desc = input.description || '';
+            exploration.toolCalls.push(`› ${event.tool.name}`);
+            if (!textOutputStarted) exploration.spinner.stop();
+            console.log(chalk.yellow(`\n  ⚡ Task ${chalk.bold(subagentType)} ${chalk.dim(desc)}`));
+            if (!textOutputStarted) exploration.spinner.start();
+          } else {
+            if (input.file_path) detail = String(input.file_path).split('/').slice(-2).join('/');
+            else if (input.pattern) detail = String(input.pattern);
+            else if (input.command) detail = String(input.command).substring(0, 50);
+            else if (input.query) detail = String(input.query).substring(0, 40);
+            else if (input.path) detail = String(input.path).split('/').slice(-2).join('/');
+
+            const toolInfo = detail ? `${event.tool.name} ${chalk.dim(detail)}` : event.tool.name;
+            exploration.toolCalls.push(`› ${event.tool.name}`);
+
+            if (!textOutputStarted) exploration.spinner.stop();
+            console.log(chalk.cyan(`${textOutputStarted ? '\n' : ''}  › ${toolInfo}`));
+            if (!textOutputStarted) exploration.spinner.start();
+          }
+
+          if (!textOutputStarted) {
+            const state = EXPLORATION_STATES[exploration.toolCalls.length % EXPLORATION_STATES.length];
+            const baseText = `${chalk.bold.hex('#D97706')(agent.displayName)} ${state.color(state.text)}`;
+            exploration.spinner.text = `${baseText} ${chalk.dim(`(${exploration.toolCalls.length} tools)`)}`;
+          }
+          break;
+        }
+
+        case 'text_delta': {
+          if (event.text.trim()) {
+            if (!textOutputStarted) {
+              textOutputStarted = true;
+              exploration.stop();
+              console.log(chalk.dim('\n  ─────────────────────────────────────────\n'));
+            }
+            process.stdout.write(event.text);
+          }
+          break;
+        }
+
+        default:
+          break;
+      }
+    });
+
+    // Ensure spinner is stopped
+    if (!textOutputStarted) {
+      exploration.stop();
+    }
+
+    const durationSec = ((Date.now() - startTime) / 1000).toFixed(1);
+    if (textOutputStarted) {
+      console.log(chalk.dim('\n\n  ─────────────────────────────────────────'));
+    } else {
+      console.log(chalk.dim('\n  ─────────────────────────────────────────'));
+    }
+
+    if (result.timedOut) {
+      console.log(chalk.yellow(`\n  ✗ ${agent.displayName} timed out after ${durationSec}s`));
+      return {
+        caseId: caseData.id,
+        title: caseData.title,
+        baselineGrade: baseline.grade,
+        baselineAnswer: baseline.answer,
+        newAnswer: '',
+        baselineMetrics: baseline.behaviorMetrics,
+        success: false,
+        error: 'Timed out',
+      };
+    }
+
+    if (!result.success) {
+      console.log(chalk.red(`\n  ✗ ${agent.displayName} failed: ${result.error}`));
+      return {
+        caseId: caseData.id,
+        title: caseData.title,
+        baselineGrade: baseline.grade,
+        baselineAnswer: baseline.answer,
+        newAnswer: '',
+        baselineMetrics: baseline.behaviorMetrics,
+        success: false,
+        error: result.error,
+      };
+    }
+
+    console.log(chalk.green(`\n  ✓ ${agent.displayName} completed in ${durationSec}s`) + chalk.dim(` (${result.model})`));
+
+    // Compute and display metrics comparison
+    const newMetrics = computeBehaviorMetrics(result);
+    displayMetricsComparison(baseline.behaviorMetrics, newMetrics);
+
+    return {
+      caseId: caseData.id,
+      title: caseData.title,
+      baselineGrade: baseline.grade,
+      baselineAnswer: baseline.answer,
+      newAnswer: result.answer,
+      baselineMetrics: baseline.behaviorMetrics,
+      newMetrics,
+      durationMs: result.durationMs,
+      success: true,
+    };
+
+  } catch (err) {
+    exploration.stop();
+    console.log(chalk.red(`\n  ✗ Failed: ${(err as Error).message}`));
+    return {
+      caseId: caseData.id,
+      title: caseData.title,
+      baselineGrade: baseline.grade,
+      baselineAnswer: baseline.answer,
+      newAnswer: '',
+      baselineMetrics: baseline.behaviorMetrics,
+      success: false,
+      error: (err as Error).message,
+    };
+  }
+}
+
+/**
+ * Display comparison summary
+ */
+function displayComparisonSummary(results: ComparisonResult[]): void {
+  const successful = results.filter(r => r.success);
+  const failed = results.filter(r => !r.success);
+
+  // Calculate aggregate metrics changes
+  let totalTokensBaseline = 0;
+  let totalTokensNew = 0;
+  let totalCostBaseline = 0;
+  let totalCostNew = 0;
+
+  for (const r of successful) {
+    if (r.baselineMetrics && r.newMetrics) {
+      totalTokensBaseline += r.baselineMetrics.totalTokens;
+      totalTokensNew += r.newMetrics.totalTokens;
+      totalCostBaseline += r.baselineMetrics.costUsd;
+      totalCostNew += r.newMetrics.costUsd;
+    }
+  }
+
+  const tokenDelta = totalTokensNew - totalTokensBaseline;
+  const tokenPct = totalTokensBaseline > 0 ? ((tokenDelta / totalTokensBaseline) * 100).toFixed(1) : '0';
+  const costDelta = totalCostNew - totalCostBaseline;
+  const costPct = totalCostBaseline > 0 ? ((costDelta / totalCostBaseline) * 100).toFixed(1) : '0';
+
+  const tokenColor = tokenDelta <= 0 ? chalk.green : chalk.red;
+  const costColor = costDelta <= 0 ? chalk.green : chalk.red;
+
+  const summaryLines = [
+    chalk.bold('Comparison Summary\n'),
+    `Cases compared: ${successful.length}/${results.length}`,
+    failed.length > 0 ? chalk.yellow(`Failed: ${failed.length}`) : '',
+    '',
+    chalk.bold('Aggregate Metrics:'),
+    `  Tokens: ${totalTokensBaseline.toLocaleString()} → ${totalTokensNew.toLocaleString()} ${tokenColor(`(${tokenDelta >= 0 ? '+' : ''}${tokenPct}%)`)}`,
+    `  Cost: $${totalCostBaseline.toFixed(4)} → $${totalCostNew.toFixed(4)} ${costColor(`(${costDelta >= 0 ? '+' : ''}${costPct}%)`)}`,
+    '',
+    chalk.dim('Note: Run with LLM-judge (coming soon) for answer quality comparison'),
+  ].filter(Boolean);
+
+  console.log(box(summaryLines.join('\n'), 'Results'));
+}
+
+/**
  * Main interview command
  */
 export async function interviewCommand(options: InterviewOptions) {
   const projectRoot = process.cwd();
+  const isCompareMode = options.compare === true;
 
-  // Header
-  console.log(box(
-    chalk.bold('Comprehension Interview\n\n') +
-    chalk.dim('Test how well your agent understands this codebase.\n') +
-    chalk.dim('You\'ll grade each answer on a 1-10 scale to establish baselines.'),
-    'sniff interview'
-  ));
+  // Header - different for compare mode
+  if (isCompareMode) {
+    console.log(box(
+      chalk.bold('Baseline Comparison\n\n') +
+      chalk.dim('Compare new agent responses against existing baselines.\n') +
+      chalk.dim('Metrics will be compared; answer quality requires LLM-judge (coming soon).'),
+      'sniff interview --compare'
+    ));
+  } else {
+    console.log(box(
+      chalk.bold('Comprehension Interview\n\n') +
+      chalk.dim('Test how well your agent understands this codebase.\n') +
+      chalk.dim('You\'ll grade each answer on a 1-10 scale to establish baselines.'),
+      'sniff interview'
+    ));
+  }
 
   // Get the agent
   let agent: AgentWrapper;
@@ -582,9 +851,27 @@ export async function interviewCommand(options: InterviewOptions) {
     console.log(chalk.dim(`\n  ${baselineCount} existing baseline${baselineCount === 1 ? '' : 's'} found\n`));
   }
 
+  // In compare mode, we need baselines to compare against
+  if (isCompareMode && baselineCount === 0) {
+    console.log(chalk.red('\n  No baselines found to compare against.'));
+    console.log(chalk.yellow('  Run `sniff interview` first to establish baselines.\n'));
+    return;
+  }
+
+  // Filter cases to only those with baselines in compare mode
+  const casesToRun = isCompareMode
+    ? cases.filter(c => store.baselines[c.id])
+    : cases;
+
+  if (isCompareMode && casesToRun.length === 0) {
+    console.log(chalk.red('\n  No matching cases found with baselines.'));
+    console.log(chalk.yellow('  Run `sniff interview` first to establish baselines.\n'));
+    return;
+  }
+
   // Show available questions
-  console.log(chalk.bold('\n  Questions to cover:\n'));
-  for (const c of cases) {
+  console.log(chalk.bold(`\n  Questions to ${isCompareMode ? 'compare' : 'cover'}:\n`));
+  for (const c of casesToRun) {
     const hasBaseline = store.baselines[c.id];
     const status = hasBaseline
       ? chalk.green(`✓ ${hasBaseline.grade}/10`)
@@ -597,56 +884,89 @@ export async function interviewCommand(options: InterviewOptions) {
 
   try {
     // Ask if user wants to continue
-    const proceed = await ask(rl, chalk.cyan('\n  Start interview? (Y/n): '));
+    const promptText = isCompareMode
+      ? chalk.cyan('\n  Start comparison? (Y/n): ')
+      : chalk.cyan('\n  Start interview? (Y/n): ');
+    const proceed = await ask(rl, promptText);
 
     if (proceed.toLowerCase() === 'n') {
-      console.log(chalk.dim('\n  Interview cancelled.\n'));
+      console.log(chalk.dim(`\n  ${isCompareMode ? 'Comparison' : 'Interview'} cancelled.\n`));
       return;
     }
 
-    console.log(chalk.dim('\n  Starting interview...\n'));
+    console.log(chalk.dim(`\n  Starting ${isCompareMode ? 'comparison' : 'interview'}...\n`));
     console.log(chalk.dim('  ═══════════════════════════════════════════════════\n'));
 
-    // Run each question
-    const results: { caseId: string; grade: number; skipped: boolean }[] = [];
+    if (isCompareMode) {
+      // Compare mode - run all cases against baselines
+      const comparisonResults: ComparisonResult[] = [];
 
-    for (let i = 0; i < cases.length; i++) {
-      const caseData = cases[i];
+      for (let i = 0; i < casesToRun.length; i++) {
+        const caseData = casesToRun[i];
+        const baseline = store.baselines[caseData.id];
 
-      console.log(chalk.bold(`\n  [${i + 1}/${cases.length}] ${caseData.title}`));
-      console.log(chalk.dim(`  Difficulty: ${caseData.difficulty}\n`));
+        console.log(chalk.bold(`\n  [${i + 1}/${casesToRun.length}] ${caseData.title}`));
+        console.log(chalk.dim(`  Difficulty: ${caseData.difficulty}\n`));
 
-      const result = await runInterviewQuestion(caseData, agent, rl, store, projectRoot);
-      // Update rl in case it was recreated after agent run
-      rl = result.rl;
-      results.push({ caseId: caseData.id, grade: result.grade, skipped: result.skipped });
+        const result = await runComparisonCase(caseData, agent, baseline, projectRoot);
+        comparisonResults.push(result);
 
-      if (i < cases.length - 1) {
-        const next = await ask(rl, chalk.cyan('\n  Continue to next question? (Y/n/q to quit): '));
+        if (i < casesToRun.length - 1) {
+          const next = await ask(rl, chalk.cyan('\n  Continue to next question? (Y/n/q to quit): '));
 
-        if (next.toLowerCase() === 'q' || next.toLowerCase() === 'n') {
-          console.log(chalk.dim('\n  Interview paused. Run again to continue.\n'));
-          break;
+          if (next.toLowerCase() === 'q' || next.toLowerCase() === 'n') {
+            console.log(chalk.dim('\n  Comparison paused.\n'));
+            break;
+          }
         }
       }
+
+      // Summary for compare mode
+      console.log(chalk.dim('\n  ═══════════════════════════════════════════════════\n'));
+      displayComparisonSummary(comparisonResults);
+
+    } else {
+      // Normal interview mode
+      const results: { caseId: string; grade: number; skipped: boolean }[] = [];
+
+      for (let i = 0; i < casesToRun.length; i++) {
+        const caseData = casesToRun[i];
+
+        console.log(chalk.bold(`\n  [${i + 1}/${casesToRun.length}] ${caseData.title}`));
+        console.log(chalk.dim(`  Difficulty: ${caseData.difficulty}\n`));
+
+        const result = await runInterviewQuestion(caseData, agent, rl, store, projectRoot);
+        // Update rl in case it was recreated after agent run
+        rl = result.rl;
+        results.push({ caseId: caseData.id, grade: result.grade, skipped: result.skipped });
+
+        if (i < casesToRun.length - 1) {
+          const next = await ask(rl, chalk.cyan('\n  Continue to next question? (Y/n/q to quit): '));
+
+          if (next.toLowerCase() === 'q' || next.toLowerCase() === 'n') {
+            console.log(chalk.dim('\n  Interview paused. Run again to continue.\n'));
+            break;
+          }
+        }
+      }
+
+      // Summary for interview mode
+      console.log(chalk.dim('\n  ═══════════════════════════════════════════════════\n'));
+
+      const completed = results.filter(r => !r.skipped);
+      const totalGrade = completed.reduce((sum, r) => sum + r.grade, 0);
+      const avgGrade = completed.length > 0 ? (totalGrade / completed.length).toFixed(1) : 'N/A';
+
+      const summaryLines = [
+        chalk.bold('Interview Summary\n'),
+        `Questions answered: ${completed.length}/${results.length}`,
+        `Average grade: ${avgGrade}/10`,
+        '',
+        chalk.dim(`Baselines saved to: ${getBaselineStorePath(projectRoot)}`),
+      ];
+
+      console.log(box(summaryLines.join('\n'), 'Results'));
     }
-
-    // Summary
-    console.log(chalk.dim('\n  ═══════════════════════════════════════════════════\n'));
-
-    const completed = results.filter(r => !r.skipped);
-    const totalGrade = completed.reduce((sum, r) => sum + r.grade, 0);
-    const avgGrade = completed.length > 0 ? (totalGrade / completed.length).toFixed(1) : 'N/A';
-
-    const summaryLines = [
-      chalk.bold('Interview Summary\n'),
-      `Questions answered: ${completed.length}/${results.length}`,
-      `Average grade: ${avgGrade}/10`,
-      '',
-      chalk.dim(`Baselines saved to: ${getBaselineStorePath(projectRoot)}`),
-    ];
-
-    console.log(box(summaryLines.join('\n'), 'Results'));
 
   } finally {
     rl.close();
