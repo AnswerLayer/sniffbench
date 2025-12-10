@@ -1,11 +1,11 @@
 {
   "name": "sniffbench",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A benchmark suite for coding agents. Think pytest, but for evaluating AI assistants.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "sniff": "./dist/cli/index.js"
+    "sniff": "dist/cli/index.js"
   },
   "scripts": {
     "build": "tsc",
@@ -30,12 +30,16 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/answerlayer/sniffbench.git"
+    "url": "git+https://github.com/answerlayer/sniffbench.git"
   },
   "bugs": {
     "url": "https://github.com/answerlayer/sniffbench/issues"
   },
   "homepage": "https://github.com/answerlayer/sniffbench#readme",
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.61",
     "@anthropic-ai/claude-code": "^2.0.61",
