@@ -223,7 +223,7 @@ function displayMetricsComparison(
   console.log(`    ${formatMetricDelta('Tokens', baseline.totalTokens, newMetrics.totalTokens, true)}`);
   console.log(`    ${formatMetricDelta('Tools', baseline.toolCount, newMetrics.toolCount, true)}`);
   console.log(`    ${formatMetricDelta('Cost', baseline.costUsd * 10000, newMetrics.costUsd * 10000, true).replace('Cost', 'Cost ($×10⁴)')}`);
-  console.log(`    ${formatMetricDelta('Cache hits', Math.round(baseline.cacheHitRatio * 100), Math.round(newMetrics.cacheHitRatio * 100), false)}%`);
+  console.log(`    ${formatMetricDelta('Cache hits', Math.round(baseline.cacheHitRatio * 100), Math.round(newMetrics.cacheHitRatio * 100), false)}`);
 }
 
 /**
