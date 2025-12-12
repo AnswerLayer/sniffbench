@@ -40,8 +40,8 @@ export function hashAgentConfig(config: AgentConfig): string {
     model: config.model,
     claudeMdHash: config.claudeMdHash,
     mcpServers: config.mcpServers ? sortObject(config.mcpServers) : undefined,
-    allowedTools: config.allowedTools?.sort(),
-    disallowedTools: config.disallowedTools?.sort(),
+    allowedTools: config.allowedTools ? [...config.allowedTools].sort() : undefined,
+    disallowedTools: config.disallowedTools ? [...config.disallowedTools].sort() : undefined,
     permissionMode: config.permissionMode,
     thinkingEnabled: config.thinkingEnabled,
     // Note: variantId is NOT included in hash (circular dependency)
