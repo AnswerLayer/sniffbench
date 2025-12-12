@@ -40,7 +40,13 @@ export function loadRuns(projectRoot: string): RunStore {
       if (data.version !== RUN_STORE_VERSION) {
         console.warn(`Warning: runs.json version mismatch (expected ${RUN_STORE_VERSION}, got ${data.version})`);
       }
-      return data;
+      // Defensive parsing with defaults for missing/invalid fields
+      return {
+        version: typeof data.version === 'string' ? data.version : RUN_STORE_VERSION,
+        repoPath: typeof data.repoPath === 'string' ? data.repoPath : projectRoot,
+        createdAt: typeof data.createdAt === 'string' ? data.createdAt : new Date().toISOString(),
+        runs: data && typeof data.runs === 'object' && data.runs ? data.runs : {},
+      };
     } catch (err) {
       console.error('Failed to load runs.json:', err);
       // Return empty store on error
