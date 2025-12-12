@@ -16,6 +16,18 @@ import {
 import { statusCommand } from './commands/status';
 import { doctorCommand } from './commands/doctor';
 import { interviewCommand } from './commands/interview';
+import {
+  runsListCommand,
+  runsShowCommand,
+  runsDeleteCommand,
+} from './commands/runs';
+import {
+  variantRegisterCommand,
+  variantListCommand,
+  variantShowCommand,
+  variantDiffCommand,
+  variantDeleteCommand,
+} from './commands/variant';
 
 const program = new Command();
 
@@ -114,6 +126,81 @@ program
   .option('--cases <cases>', 'Specific case IDs to run (comma-separated)')
   .option('--output <dir>', 'Output directory for results', 'results')
   .option('--compare', 'Compare new responses against existing baselines')
+  .option('--run <label>', 'Save results to a named run (enables run tracking)')
+  .option('--variant <name>', 'Link run to a registered variant (auto-detects if not provided)')
   .action(interviewCommand);
+
+// Runs command with subcommands
+const runsCmd = program
+  .command('runs')
+  .description('Manage evaluation runs');
+
+runsCmd
+  .command('list')
+  .description('List all runs')
+  .option('--json', 'Output as JSON')
+  .action(runsListCommand);
+
+runsCmd
+  .command('show')
+  .description('Show details of a specific run')
+  .argument('<id>', 'Run ID or label')
+  .option('--json', 'Output as JSON')
+  .action((id, opts) => runsShowCommand({ id, ...opts }));
+
+runsCmd
+  .command('delete')
+  .description('Delete a run')
+  .argument('<id>', 'Run ID or label')
+  .option('-f, --force', 'Skip confirmation')
+  .action((id, opts) => runsDeleteCommand({ id, ...opts }));
+
+// Default to list if no subcommand
+runsCmd.action(() => runsListCommand({}));
+
+// Variant command with subcommands
+const variantCmd = program
+  .command('variant')
+  .description('Manage registered agent configuration variants');
+
+variantCmd
+  .command('register')
+  .description('Register current configuration as a named variant')
+  .argument('<name>', 'Variant name (e.g., "control", "with-linear-mcp")')
+  .option('-d, --description <text>', 'Description of the variant')
+  .option('-c, --changes <changes...>', 'List of explicit changes in this variant')
+  .option('-a, --agent <name>', 'Agent type to capture config for', 'claude-code')
+  .action((name, opts) => variantRegisterCommand(name, opts));
+
+variantCmd
+  .command('list')
+  .description('List all registered variants')
+  .option('--json', 'Output as JSON')
+  .action(variantListCommand);
+
+variantCmd
+  .command('show')
+  .description('Show details of a specific variant')
+  .argument('<id>', 'Variant ID or name')
+  .option('--json', 'Output as JSON')
+  .action((id, opts) => variantShowCommand({ id, ...opts }));
+
+variantCmd
+  .command('diff')
+  .description('Compare configuration between two variants')
+  .argument('<variant1>', 'First variant ID or name')
+  .argument('<variant2>', 'Second variant ID or name')
+  .option('--json', 'Output as JSON')
+  .action((id1, id2, opts) => variantDiffCommand(id1, id2, opts));
+
+variantCmd
+  .command('delete')
+  .description('Delete a variant')
+  .argument('<id>', 'Variant ID or name')
+  .option('-f, --force', 'Skip confirmation')
+  .action((id, opts) => variantDeleteCommand({ id, ...opts }));
+
+// Default to list if no subcommand
+variantCmd.action(() => variantListCommand({}));
 
 program.parse();

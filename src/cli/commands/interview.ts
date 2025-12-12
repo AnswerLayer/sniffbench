@@ -17,6 +17,24 @@ import { loadCases, getDefaultCasesDir } from '../../cases';
 import { Case } from '../../cases/types';
 import { getAgent, AgentWrapper, AgentResult, AgentEvent } from '../../agents';
 import { computeBehaviorMetrics, formatBehaviorMetrics } from '../../metrics';
+import {
+  Run,
+  CaseRun,
+  loadRuns,
+  saveRuns,
+  generateRunId,
+  addRun,
+  capturePartialAgentConfig,
+  performMigration,
+  needsMigration,
+  defaultBehaviorMetrics,
+} from '../../runs';
+import {
+  loadVariants,
+  resolveVariantId,
+  getVariant,
+  findMatchingVariant,
+} from '../../variants';
 
 /**
  * Exploration status messages - cycles through these while agent works
@@ -103,6 +121,8 @@ interface InterviewOptions {
   output: string;
   baseline?: boolean;
   compare?: boolean;
+  run?: string;  // Save to named run (enables run tracking)
+  variant?: string;  // Link run to a registered variant
 }
 
 interface Baseline {
@@ -381,7 +401,7 @@ async function runInterviewQuestion(
   rl: readline.Interface,
   store: BaselineStore,
   projectRoot: string
-): Promise<{ grade: number; skipped: boolean; durationMs?: number; rl: readline.Interface }> {
+): Promise<{ grade: number; skipped: boolean; durationMs?: number; model?: string; rl: readline.Interface }> {
   const existingBaseline = store.baselines[caseData.id];
 
   // Show the question
@@ -578,7 +598,7 @@ async function runInterviewQuestion(
 
     console.log(chalk.green(`\n  ✓ Baseline saved (${grade}/10)`));
 
-    return { grade, skipped: false, durationMs: result.durationMs, rl };
+    return { grade, skipped: false, durationMs: result.durationMs, model: result.model, rl };
   } catch (err) {
     exploration.stop();
     console.log(chalk.red(`\n  ✗ Failed: ${(err as Error).message}`));
@@ -784,8 +804,22 @@ function displayComparisonSummary(results: ComparisonResult[]): void {
 export async function interviewCommand(options: InterviewOptions) {
   const projectRoot = process.cwd();
   const isCompareMode = options.compare === true;
+  const isRunMode = !!options.run;
 
-  // Header - different for compare mode
+  // Migrate baselines if needed
+  if (needsMigration(projectRoot)) {
+    console.log(chalk.dim('  Migrating baselines.json to runs.json format...'));
+    try {
+      performMigration(projectRoot);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(chalk.red(`\n  Migration failed: ${message}`));
+      console.error(chalk.dim('  Check file permissions and available disk space.\n'));
+      process.exit(1);
+    }
+  }
+
+  // Header - different for each mode
   if (isCompareMode) {
     console.log(box(
       chalk.bold('Baseline Comparison\n\n') +
@@ -794,10 +828,13 @@ export async function interviewCommand(options: InterviewOptions) {
       'sniff interview --compare'
     ));
   } else {
+    const labelInfo = options.run
+      ? chalk.dim(`Results will be saved to run: ${chalk.cyan(options.run)}`)
+      : chalk.dim('Results will be saved to a new run with auto-generated ID.');
     console.log(box(
       chalk.bold('Comprehension Interview\n\n') +
       chalk.dim('Test how well your agent understands this codebase.\n') +
-      chalk.dim('You\'ll grade each answer on a 1-10 scale to establish baselines.'),
+      labelInfo,
       'sniff interview'
     ));
   }
@@ -824,6 +861,47 @@ export async function interviewCommand(options: InterviewOptions) {
 
   const version = await agent.getVersion();
   spinner.succeed(`${agent.displayName} ${version ? `(${version})` : ''} is ready`);
+
+  // Always initialize run tracking (--run flag just provides optional label)
+  const agentConfig = await capturePartialAgentConfig(agent, projectRoot);
+
+  // Handle variant linking
+  let variantId: string | undefined;
+  if (options.variant) {
+    // Explicit variant provided
+    const variantStore = loadVariants(projectRoot);
+    const resolvedId = resolveVariantId(variantStore, options.variant);
+    if (!resolvedId) {
+      console.log(chalk.red(`\n  Variant not found: ${options.variant}`));
+      console.log(chalk.dim('  Use `sniff variant list` to see available variants.\n'));
+      return;
+    }
+    const variant = getVariant(variantStore, resolvedId)!;
+    variantId = variant.id;
+    console.log(chalk.dim(`\n  Using variant: ${variant.name} (${variant.id})`));
+  } else {
+    // Try auto-matching to an existing variant
+    const variantStore = loadVariants(projectRoot);
+    const matchingVariant = findMatchingVariant(variantStore, agentConfig);
+    if (matchingVariant) {
+      variantId = matchingVariant.id;
+      console.log(chalk.dim(`\n  Auto-linked to variant: ${matchingVariant.name}`));
+    }
+  }
+
+  // Add variantId to agent config if linked
+  if (variantId) {
+    agentConfig.variantId = variantId;
+  }
+
+  const currentRun: Run = {
+    id: generateRunId(),
+    label: options.run,  // undefined if --run not provided
+    createdAt: new Date().toISOString(),
+    agent: agentConfig,
+    cases: {},
+  };
+  console.log(chalk.dim(`\n  Run ID: ${currentRun.id}${options.run ? ` [${options.run}]` : ''}`));
 
   // Load comprehension cases
   spinner.start('Loading comprehension cases...');
@@ -927,7 +1005,7 @@ export async function interviewCommand(options: InterviewOptions) {
 
     } else {
       // Normal interview mode
-      const results: { caseId: string; grade: number; skipped: boolean }[] = [];
+      const results: { caseId: string; grade: number; skipped: boolean; model?: string }[] = [];
 
       for (let i = 0; i < casesToRun.length; i++) {
         const caseData = casesToRun[i];
@@ -938,7 +1016,33 @@ export async function interviewCommand(options: InterviewOptions) {
         const result = await runInterviewQuestion(caseData, agent, rl, store, projectRoot);
         // Update rl in case it was recreated after agent run
         rl = result.rl;
-        results.push({ caseId: caseData.id, grade: result.grade, skipped: result.skipped });
+        results.push({
+          caseId: caseData.id,
+          grade: result.grade,
+          skipped: result.skipped,
+          model: result.model,
+        });
+
+        // Copy baseline to run if case wasn't skipped
+        if (!result.skipped) {
+          const baseline = store.baselines[caseData.id];
+          if (baseline) {
+            const caseRun: CaseRun = {
+              answer: baseline.answer,
+              grade: baseline.grade,
+              gradedAt: baseline.gradedAt,
+              gradedBy: baseline.gradedBy,
+              notes: baseline.notes,
+              behaviorMetrics: baseline.behaviorMetrics || defaultBehaviorMetrics(),
+            };
+            currentRun.cases[caseData.id] = caseRun;
+
+            // Update model from first case result
+            if (result.model && currentRun.agent.model === 'unknown') {
+              currentRun.agent.model = result.model;
+            }
+          }
+        }
 
         if (i < casesToRun.length - 1) {
           const next = await ask(rl, chalk.cyan('\n  Continue to next question? (Y/n/q to quit): '));
@@ -948,6 +1052,13 @@ export async function interviewCommand(options: InterviewOptions) {
             break;
           }
         }
+      }
+
+      // Save run to runs.json
+      if (Object.keys(currentRun.cases).length > 0) {
+        const runStore = loadRuns(projectRoot);
+        addRun(runStore, currentRun);
+        saveRuns(projectRoot, runStore);
       }
 
       // Summary for interview mode
@@ -962,8 +1073,12 @@ export async function interviewCommand(options: InterviewOptions) {
         `Questions answered: ${completed.length}/${results.length}`,
         `Average grade: ${avgGrade}/10`,
         '',
-        chalk.dim(`Baselines saved to: ${getBaselineStorePath(projectRoot)}`),
       ];
+
+      summaryLines.push(chalk.dim(`Run saved: ${currentRun.id}`));
+      if (currentRun.label) {
+        summaryLines.push(chalk.dim(`Label: ${currentRun.label}`));
+      }
 
       console.log(box(summaryLines.join('\n'), 'Results'));
     }
