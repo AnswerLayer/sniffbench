@@ -3,7 +3,7 @@
  */
 
 import chalk from 'chalk';
-import { box } from '../../utils/ui';
+import { box, padVisible } from '../../utils/ui';
 import {
   loadRuns,
   saveRuns,
@@ -44,14 +44,17 @@ function formatRunRow(run: Run): string {
     ? (Object.values(run.cases).reduce((sum, c) => sum + (c.grade || 0), 0) / gradedCount).toFixed(1)
     : 'N/A';
 
-  const label = run.label ? chalk.cyan(`[${run.label}]`) : '';
-  const date = chalk.dim(formatDate(run.createdAt));
-  const agent = chalk.yellow(run.agent.name);
-  const model = chalk.dim(run.agent.model.substring(0, 20));
-  const cases = `${gradedCount}/${caseCount} cases`;
-  const grade = gradedCount > 0 ? chalk.green(`${avgGrade}/10`) : chalk.dim('not graded');
+  // Truncate visible text BEFORE applying colors, then pad the colored result
+  const idCol = run.id.substring(0, 20);
+  const labelText = run.label ? `[${run.label}]` : '';
+  const labelCol = padVisible(labelText ? chalk.cyan(labelText.substring(0, 18)) : '', 20);
+  const dateCol = padVisible(chalk.dim(formatDate(run.createdAt)), 22);
+  const agentCol = padVisible(chalk.yellow(run.agent.name.substring(0, 12)), 12);
+  const modelCol = padVisible(chalk.dim(run.agent.model.substring(0, 20)), 20);
+  const casesCol = padVisible(`${gradedCount}/${caseCount} cases`, 12);
+  const gradeCol = gradedCount > 0 ? chalk.green(`${avgGrade}/10`) : chalk.dim('not graded');
 
-  return `  ${run.id.substring(0, 20)}  ${label.padEnd(20)}  ${date}  ${agent} ${model}  ${cases}  ${grade}`;
+  return `  ${idCol}  ${labelCol}  ${dateCol}  ${agentCol}  ${modelCol}  ${casesCol}  ${gradeCol}`;
 }
 
 /**
