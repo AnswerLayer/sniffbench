@@ -27,6 +27,7 @@ import {
   capturePartialAgentConfig,
   performMigration,
   needsMigration,
+  defaultBehaviorMetrics,
 } from '../../runs';
 import {
   loadVariants,
@@ -1025,20 +1026,7 @@ export async function interviewCommand(options: InterviewOptions) {
               gradedAt: baseline.gradedAt,
               gradedBy: baseline.gradedBy,
               notes: baseline.notes,
-              behaviorMetrics: baseline.behaviorMetrics || {
-                totalTokens: 0,
-                toolCount: 0,
-                costUsd: 0,
-                explorationRatio: 0,
-                cacheHitRatio: 0,
-                avgToolDurationMs: 0,
-                tokensPerTool: 0,
-                tokensPerRead: 0,
-                readCount: 0,
-                inputTokens: 0,
-                cacheReadTokens: 0,
-                cacheWriteTokens: 0,
-              },
+              behaviorMetrics: baseline.behaviorMetrics || defaultBehaviorMetrics(),
             };
             currentRun.cases[caseData.id] = caseRun;
 

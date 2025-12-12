@@ -28,8 +28,17 @@ function formatMetricDelta(
   lowerIsBetter: boolean = false
 ): string {
   const delta = newVal - oldVal;
-  const pctChange = oldVal > 0 ? ((delta / oldVal) * 100) : 0;
-  const pctStr = pctChange >= 0 ? `+${pctChange.toFixed(1)}%` : `${pctChange.toFixed(1)}%`;
+
+  // Compute percentage string, handling division by zero
+  let pctStr: string;
+  if (oldVal === 0 && newVal === 0) {
+    pctStr = '0.0%';
+  } else if (oldVal === 0) {
+    pctStr = 'N/A';
+  } else {
+    const pctChange = (delta / oldVal) * 100;
+    pctStr = pctChange >= 0 ? `+${pctChange.toFixed(1)}%` : `${pctChange.toFixed(1)}%`;
+  }
 
   let color: typeof chalk.green;
   if (delta === 0) {

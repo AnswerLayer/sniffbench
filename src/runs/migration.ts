@@ -19,7 +19,7 @@ import { RUN_STORE_VERSION, generateRunId } from './store';
 /**
  * Default behavior metrics for legacy baselines without metrics
  */
-function defaultBehaviorMetrics(): BehaviorMetrics {
+export function defaultBehaviorMetrics(): BehaviorMetrics {
   return {
     totalTokens: 0,
     toolCount: 0,

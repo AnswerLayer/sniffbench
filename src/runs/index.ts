@@ -59,4 +59,5 @@ export {
   migrateBaselinesV1ToRuns,
   performMigration,
   getMigrationInfo,
+  defaultBehaviorMetrics,
 } from './migration';
