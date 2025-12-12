@@ -809,7 +809,14 @@ export async function interviewCommand(options: InterviewOptions) {
   // Migrate baselines if needed
   if (needsMigration(projectRoot)) {
     console.log(chalk.dim('  Migrating baselines.json to runs.json format...'));
-    performMigration(projectRoot);
+    try {
+      performMigration(projectRoot);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(chalk.red(`\n  Migration failed: ${message}`));
+      console.error(chalk.dim('  Check file permissions and available disk space.\n'));
+      process.exit(1);
+    }
   }
 
   // Header - different for each mode
