@@ -17,10 +17,9 @@ import {
   listRuns,
   getRunCount,
   resolveRunId,
-  Run,
-  RunStore,
-  AgentConfig,
+  diffAgentConfig,
 } from '../src/runs';
+import type { Run, RunStore, AgentConfig } from '../src/runs';
 
 describe('Run Store', () => {
   let tempDir: string;
@@ -289,8 +288,6 @@ describe('Run Store', () => {
 
 describe('Agent Config', () => {
   describe('diffAgentConfig', () => {
-    const { diffAgentConfig } = require('../src/runs');
-
     it('should detect no differences for identical configs', () => {
       const config: AgentConfig = {
         name: 'claude-code',
