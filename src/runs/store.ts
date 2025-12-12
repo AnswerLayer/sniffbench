@@ -4,7 +4,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { Run, RunStore } from './types';
+import type { Run, RunStore } from './types';
 
 /** Current schema version */
 export const RUN_STORE_VERSION = '2.0';
