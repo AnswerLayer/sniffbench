@@ -17,7 +17,7 @@ import {
   hashAgentConfig,
   Variant,
 } from '../../variants';
-import { ClaudeCodeAgent } from '../../agents/claude-code';
+import { getAgent } from '../../agents';
 
 /**
  * Format a date string for display
@@ -52,7 +52,7 @@ function formatVariantRow(variant: Variant): string {
  */
 export async function variantRegisterCommand(
   name: string,
-  options: { description?: string; changes?: string[] }
+  options: { description?: string; changes?: string[]; agent?: string }
 ): Promise<void> {
   const projectRoot = process.cwd();
   const store = loadVariants(projectRoot);
@@ -66,9 +66,12 @@ export async function variantRegisterCommand(
     return;
   }
 
+  // Get the agent (defaults to claude-code)
+  const agentName = options.agent || 'claude-code';
+  const agent = getAgent(agentName);
+
   // Capture current ambient config
-  console.log(chalk.dim('  Capturing current agent configuration...'));
-  const agent = new ClaudeCodeAgent();
+  console.log(chalk.dim(`  Capturing current agent configuration for ${agentName}...`));
   const snapshot = await capturePartialAgentConfig(agent, projectRoot);
 
   // Register the variant

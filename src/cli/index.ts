@@ -169,6 +169,7 @@ variantCmd
   .argument('<name>', 'Variant name (e.g., "control", "with-linear-mcp")')
   .option('-d, --description <text>', 'Description of the variant')
   .option('-c, --changes <changes...>', 'List of explicit changes in this variant')
+  .option('-a, --agent <name>', 'Agent type to capture config for', 'claude-code')
   .action((name, opts) => variantRegisterCommand(name, opts));
 
 variantCmd
