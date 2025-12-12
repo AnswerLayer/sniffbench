@@ -5,7 +5,7 @@
  * between different agent configurations.
  */
 
-import { AgentConfig } from '../runs/types';
+import type { AgentConfig } from '../runs/types';
 
 /**
  * A registered variant - a named configuration snapshot
