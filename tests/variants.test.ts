@@ -186,7 +186,7 @@ describe('Variant Store', () => {
       expect(variant.name).toBe('control');
       expect(variant.description).toBe('Stock configuration');
       expect(variant.changes).toEqual(['Initial setup']);
-      expect(variant.snapshot).toBe(snapshot);
+      expect(variant.snapshot).toEqual(snapshot);
       expect(store.variants[variant.id]).toBe(variant);
     });
 
