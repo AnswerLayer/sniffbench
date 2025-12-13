@@ -4,6 +4,7 @@
 
 import chalk from 'chalk';
 import { box, padVisible } from '../../utils/ui';
+import { checkMissingEnvVars, getEnvFilePath } from '../../utils/env';
 import { captureSandboxableSnapshot, diffAgentConfig, formatAgentConfig } from '../../runs';
 import {
   loadVariants,
@@ -23,7 +24,6 @@ import {
   variantImageExists,
   pruneVariantImage,
   collectRequiredEnvVars,
-  validateVariantEnv,
   getHostClaudeVersion,
   checkDockerAvailable,
 } from '../../sandbox';
@@ -583,14 +583,16 @@ export async function variantUseCommand(idOrName: string): Promise<void> {
     console.log(chalk.dim('  Run `sniff variant build ' + variant.name + '` to build it first.\n'));
   }
 
-  // Validate env vars
-  const envValidation = validateVariantEnv(variant.snapshot);
-  if (envValidation.missing.length > 0) {
-    console.log(chalk.yellow(`\n  Warning: Missing environment variables:`));
-    for (const v of envValidation.missing) {
+  // Validate env vars (check both process.env and .sniffbench/.env)
+  const requiredEnvVars = collectRequiredEnvVars(variant.snapshot);
+  const envCheck = checkMissingEnvVars(requiredEnvVars, projectRoot);
+  if (envCheck.missing.length > 0) {
+    const envFilePath = getEnvFilePath(projectRoot);
+    console.log(chalk.yellow(`\n  Missing environment variables:`));
+    for (const v of envCheck.missing) {
       console.log(chalk.red(`    ${v}`));
     }
-    console.log('');
+    console.log(chalk.dim(`\n  Add them to ${envFilePath} or export in your shell.\n`));
   }
 
   // Store active variant in project settings

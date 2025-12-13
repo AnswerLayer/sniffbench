@@ -7,7 +7,8 @@
 
 import { spawn, ChildProcess } from 'child_process';
 import type { Variant } from '../variants/types';
-import { collectRequiredEnvVars, validateVariantEnv } from './variant-container';
+import { collectRequiredEnvVars } from './variant-container';
+import { checkMissingEnvVars, getEnvVars, getEnvFilePath } from '../utils/env';
 
 export interface RunOptions {
   /** Project root to mount into container */
@@ -52,17 +53,25 @@ export async function runInVariant(
 
   const { projectRoot, env = {}, timeoutMs = DEFAULT_TIMEOUT_MS, stream, onOutput } = options;
 
-  // Validate required env vars
-  const envValidation = validateVariantEnv(variant.snapshot);
-  if (envValidation.missing.length > 0) {
+  // Collect required env vars and check availability (from process.env and .sniffbench/.env)
+  const requiredEnvVars = collectRequiredEnvVars(variant.snapshot);
+  const envCheck = checkMissingEnvVars(requiredEnvVars, projectRoot);
+
+  if (envCheck.missing.length > 0) {
+    const envFilePath = getEnvFilePath(projectRoot);
     throw new Error(
-      `Missing required environment variables for variant "${variant.name}": ${envValidation.missing.join(', ')}`
+      `Missing required environment variables: ${envCheck.missing.join(', ')}\n\n` +
+      `Add them to ${envFilePath} or export them in your shell:\n` +
+      envCheck.missing.map(v => `  ${v}=your-value-here`).join('\n')
     );
   }
 
+  // Get all env var values (merging process.env and .sniffbench/.env)
+  const resolvedEnv = getEnvVars(requiredEnvVars, projectRoot);
+
   // Build docker run arguments
   const fullImageName = `${variant.container.imageName}:${variant.container.imageTag}`;
-  const dockerArgs = buildDockerArgs(fullImageName, projectRoot, env, variant);
+  const dockerArgs = buildDockerArgs(fullImageName, projectRoot, { ...resolvedEnv, ...env }, variant);
 
   // Add claude arguments
   dockerArgs.push('--print', prompt);
@@ -144,21 +153,16 @@ function buildDockerArgs(
   imageName: string,
   projectRoot: string,
   env: Record<string, string>,
-  variant: Variant
+  _variant: Variant
 ): string[] {
   const args: string[] = ['run', '--rm'];
 
   // Mount project directory read-only
   args.push('-v', `${projectRoot}:/workspace:ro`);
 
-  // Pass environment variables
-  const requiredEnvVars = collectRequiredEnvVars(variant.snapshot);
-  for (const envVar of requiredEnvVars) {
-    // Use value from passed env, or fall back to process.env
-    const value = env[envVar] || process.env[envVar];
-    if (value) {
-      args.push('-e', `${envVar}=${value}`);
-    }
+  // Pass all resolved environment variables
+  for (const [key, value] of Object.entries(env)) {
+    args.push('-e', `${key}=${value}`);
   }
 
   // Enable network access for API calls
