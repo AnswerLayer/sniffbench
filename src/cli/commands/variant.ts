@@ -415,7 +415,7 @@ export async function variantDeleteCommand(options: { id: string; force?: boolea
  */
 export async function variantBuildCommand(
   idOrName: string,
-  options: { verbose?: boolean }
+  options: { verbose?: boolean; claudeVersion?: string }
 ): Promise<void> {
   const projectRoot = process.cwd();
   const store = loadVariants(projectRoot);
@@ -442,11 +442,15 @@ export async function variantBuildCommand(
     return;
   }
 
-  // Check Claude Code version
-  const claudeVersion = getHostClaudeVersion();
+  // Get Claude Code version: option > registered snapshot > auto-detect
+  // Clean version string (remove " (Claude Code)" suffix if present)
+  const rawVersion = options.claudeVersion
+    || variant.snapshot.version
+    || getHostClaudeVersion();
+  const claudeVersion = rawVersion?.match(/(\d+\.\d+\.\d+)/)?.[1];
   if (!claudeVersion) {
     console.log(chalk.red('\n  Could not determine Claude Code version.'));
-    console.log(chalk.dim('  Is Claude Code installed? Try: npm install -g @anthropic-ai/claude-code\n'));
+    console.log(chalk.dim('  Specify manually: sniff variant build <name> --claude-version 2.0.55\n'));
     return;
   }
 

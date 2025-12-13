@@ -46,8 +46,8 @@ export interface BuildResult {
 export function getHostClaudeVersion(): string | null {
   try {
     const output = execSync('claude --version', { encoding: 'utf-8' });
-    // Parse version from output like "claude 2.0.55"
-    const match = output.match(/claude\s+(\d+\.\d+\.\d+)/);
+    // Parse version from output like "2.0.55 (Claude Code)"
+    const match = output.match(/(\d+\.\d+\.\d+)/);
     return match ? match[1] : null;
   } catch {
     return null;

@@ -213,6 +213,7 @@ variantCmd
   .description('Build or rebuild container image for a variant')
   .argument('<name>', 'Variant ID or name')
   .option('-v, --verbose', 'Show detailed build output')
+  .option('--claude-version <version>', 'Claude Code version to install (e.g., 2.0.55)')
   .action((name, opts) => variantBuildCommand(name, opts));
 
 variantCmd
