@@ -33,7 +33,6 @@ import {
   loadVariants,
   resolveVariantId,
   getVariant,
-  findMatchingVariant,
   Variant,
 } from '../../variants';
 import { getActiveVariant } from './variant';
@@ -950,16 +949,15 @@ export async function interviewCommand(options: InterviewOptions) {
     }
   }
 
-  // Display execution mode
-  const executionMode = activeVariant
-    ? chalk.cyan(`[${activeVariant.name}]`)
-    : chalk.dim('[local]');
-  console.log(chalk.bold(`\n  Execution mode: ${executionMode}`));
+  // Display active variant
+  if (activeVariant) {
+    console.log(chalk.bold(`\n  Using variant: `) + chalk.cyan(activeVariant.name));
+  }
 
   // Always initialize run tracking (--run flag just provides optional label)
   const agentConfig = await capturePartialAgentConfig(agent, projectRoot);
 
-  // Handle variant linking (for run metadata)
+  // Handle variant linking (for run metadata) - only when explicitly specified
   let variantId: string | undefined;
   if (activeVariant) {
     // Using sandboxed variant - link to it
@@ -972,14 +970,8 @@ export async function interviewCommand(options: InterviewOptions) {
       variantId = variant.id;
       console.log(chalk.dim(`  Linked to variant: ${variant.name}`));
     }
-  } else {
-    // Try auto-matching to an existing variant
-    const matchingVariant = findMatchingVariant(variantStore, agentConfig);
-    if (matchingVariant) {
-      variantId = matchingVariant.id;
-      console.log(chalk.dim(`  Auto-linked to variant: ${matchingVariant.name}`));
-    }
   }
+  // No auto-linking - only link when explicitly specified
 
   // Add variantId to agent config if linked
   if (variantId) {

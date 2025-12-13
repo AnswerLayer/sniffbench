@@ -625,6 +625,50 @@ export async function variantUnuseCommand(): Promise<void> {
 }
 
 /**
+ * Show the currently active variant
+ */
+export async function variantActiveCommand(): Promise<void> {
+  const projectRoot = process.cwd();
+  const store = loadVariants(projectRoot);
+  const activeVariantName = getActiveVariant(projectRoot);
+
+  if (!activeVariantName) {
+    console.log(chalk.dim('\n  No variant is currently active.'));
+    console.log(chalk.dim('  Interviews will use the current ambient configuration [local].\n'));
+    return;
+  }
+
+  const variant = findVariantByName(store, activeVariantName);
+  if (!variant) {
+    console.log(chalk.yellow(`\n  Active variant "${activeVariantName}" not found in registry.`));
+    console.log(chalk.dim('  It may have been deleted. Run `sniff variant unuse` to clear.\n'));
+    return;
+  }
+
+  // Check container status
+  let containerStatus: string;
+  if (variant.container) {
+    const exists = variantImageExists(variant);
+    containerStatus = exists
+      ? chalk.green('✓ Built')
+      : chalk.yellow('⚠ Image missing (run `sniff variant build`)');
+  } else {
+    containerStatus = chalk.yellow('Not built (run `sniff variant build`)');
+  }
+
+  console.log(box(
+    [
+      `${chalk.bold('Name:')} ${chalk.cyan(variant.name)}`,
+      `${chalk.bold('ID:')} ${chalk.dim(variant.id)}`,
+      `${chalk.bold('Model:')} ${variant.snapshot.model}`,
+      `${chalk.bold('Container:')} ${containerStatus}`,
+      variant.description ? `${chalk.bold('Description:')} ${variant.description}` : '',
+    ].filter(Boolean).join('\n'),
+    'Active Variant'
+  ));
+}
+
+/**
  * Get the currently active variant name, if any
  */
 export function getActiveVariant(projectRoot: string): string | null {

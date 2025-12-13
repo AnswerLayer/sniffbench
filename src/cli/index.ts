@@ -31,6 +31,7 @@ import {
   variantPruneCommand,
   variantUseCommand,
   variantUnuseCommand,
+  variantActiveCommand,
 } from './commands/variant';
 
 const program = new Command();
@@ -233,6 +234,11 @@ variantCmd
   .command('unuse')
   .description('Deactivate the current variant')
   .action(() => variantUnuseCommand());
+
+variantCmd
+  .command('active')
+  .description('Show the currently active variant')
+  .action(() => variantActiveCommand());
 
 // Default to list if no subcommand
 variantCmd.action(() => variantListCommand({}));
