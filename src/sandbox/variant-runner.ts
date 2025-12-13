@@ -73,8 +73,8 @@ export async function runInVariant(
   const fullImageName = `${variant.container.imageName}:${variant.container.imageTag}`;
   const dockerArgs = buildDockerArgs(fullImageName, projectRoot, { ...resolvedEnv, ...env }, variant);
 
-  // Add claude arguments
-  dockerArgs.push('--print', prompt);
+  // Add claude arguments - skip permissions since container is already sandboxed
+  dockerArgs.push('-p', '--dangerously-skip-permissions', prompt);
 
   const startTime = Date.now();
   let timedOut = false;
