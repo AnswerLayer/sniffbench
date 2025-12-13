@@ -9,7 +9,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as crypto from 'crypto';
-import { AgentConfig, McpServerConfig } from './types';
+import { AgentConfig, McpServerConfig, FullMcpServerConfig } from './types';
+import type { SandboxableSnapshot } from '../variants/types';
 import { AgentWrapper } from '../agents/types';
 
 /** Claude Code main config file location */
@@ -448,4 +449,173 @@ export function diffAgentConfig(
   }
 
   return diffs;
+}
+
+/**
+ * Read CLAUDE.md content for container building
+ */
+export function readClaudeMdContent(projectRoot: string): string | undefined {
+  const claudeMdPath = findClaudeMd(projectRoot);
+  if (!claudeMdPath) {
+    return undefined;
+  }
+
+  try {
+    return fs.readFileSync(claudeMdPath, 'utf-8');
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Extract full MCP server configurations for container building
+ * Includes command, args, url, and npm package information
+ */
+export function extractFullMcpServers(
+  projectRoot: string
+): Record<string, FullMcpServerConfig> | undefined {
+  const claudeConfig = readClaudeConfig();
+  if (!claudeConfig) {
+    return undefined;
+  }
+
+  // Get project-specific config
+  const projects = claudeConfig.projects as Record<string, Record<string, unknown>> | undefined;
+  if (!projects) {
+    return undefined;
+  }
+
+  const projectConfig = projects[projectRoot];
+  if (!projectConfig) {
+    return undefined;
+  }
+
+  const mcpServers = projectConfig.mcpServers as Record<string, Record<string, unknown>> | undefined;
+  if (!mcpServers || Object.keys(mcpServers).length === 0) {
+    return undefined;
+  }
+
+  // Extract full server info
+  const result: Record<string, FullMcpServerConfig> = {};
+  for (const [name, server] of Object.entries(mcpServers)) {
+    const serverType = server.type as string | undefined;
+    const type = (serverType === 'sse' || serverType === 'http') ? serverType : 'stdio';
+
+    const config: FullMcpServerConfig = { type };
+
+    if (type === 'stdio') {
+      config.command = server.command as string | undefined;
+      config.args = server.args as string[] | undefined;
+
+      // Try to infer npm package from command
+      const command = config.command;
+      if (command) {
+        config.npmPackage = inferNpmPackage(command);
+      }
+    } else {
+      config.url = server.url as string | undefined;
+
+      // Extract headers, converting values to env var names
+      const headers = server.headers as Record<string, string> | undefined;
+      if (headers) {
+        config.headers = {};
+        const requiredEnvVars: string[] = [];
+
+        for (const [key, value] of Object.entries(headers)) {
+          // If value looks like it references an env var, extract it
+          if (typeof value === 'string' && value.startsWith('${') && value.endsWith('}')) {
+            const envVar = value.slice(2, -1);
+            config.headers[key] = `$${envVar}`;
+            requiredEnvVars.push(envVar);
+          } else {
+            config.headers[key] = value;
+          }
+        }
+
+        if (requiredEnvVars.length > 0) {
+          config.requiredEnvVars = requiredEnvVars;
+        }
+      }
+    }
+
+    result[name] = config;
+  }
+
+  // Also check project-level .mcp.json
+  const projectMcp = readProjectMcpConfig(projectRoot);
+  if (projectMcp && projectMcp.mcpServers) {
+    const projectServers = projectMcp.mcpServers as Record<string, Record<string, unknown>>;
+    for (const [name, server] of Object.entries(projectServers)) {
+      if (!result[name]) {
+        const serverType = server.type as string | undefined;
+        const type = (serverType === 'sse' || serverType === 'http') ? serverType : 'stdio';
+
+        const config: FullMcpServerConfig = { type };
+
+        if (type === 'stdio') {
+          config.command = server.command as string | undefined;
+          config.args = server.args as string[] | undefined;
+
+          if (config.command) {
+            config.npmPackage = inferNpmPackage(config.command);
+          }
+        } else {
+          config.url = server.url as string | undefined;
+        }
+
+        result[name] = config;
+      }
+    }
+  }
+
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+/**
+ * Infer npm package name from MCP server command
+ */
+function inferNpmPackage(command: string): string | undefined {
+  // Common patterns:
+  // - "npx @anthropic-ai/mcp-server-linear" -> "@anthropic-ai/mcp-server-linear"
+  // - "node node_modules/@package/bin.js" -> "@package"
+  // - "mcp-server-name" -> might be a global package
+
+  if (command.includes('npx ')) {
+    const match = command.match(/npx\s+(@?[\w-]+(?:\/[\w-]+)?)/);
+    if (match) {
+      return match[1];
+    }
+  }
+
+  // Check for node_modules path
+  if (command.includes('node_modules/')) {
+    const match = command.match(/node_modules\/(@?[\w-]+(?:\/[\w-]+)?)/);
+    if (match) {
+      return match[1];
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Capture sandboxable snapshot for container building
+ * Includes full MCP config and CLAUDE.md content
+ */
+export async function captureSandboxableSnapshot(
+  agent: AgentWrapper,
+  projectRoot: string
+): Promise<SandboxableSnapshot> {
+  // Get base config
+  const baseConfig = await capturePartialAgentConfig(agent, projectRoot);
+
+  // Add full MCP servers and CLAUDE.md content
+  const mcpServersFull = extractFullMcpServers(projectRoot);
+  const claudeMdContent = readClaudeMdContent(projectRoot);
+
+  return {
+    ...baseConfig,
+    mcpServersFull,
+    claudeMdContent,
+  };
 }

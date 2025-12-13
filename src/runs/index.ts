@@ -9,6 +9,7 @@
 export type {
   BehaviorMetrics,
   McpServerConfig,
+  FullMcpServerConfig,
   AgentConfig,
   CaseRun,
   Run,
@@ -42,11 +43,14 @@ export {
   readProjectSettings,
   readProjectMcpConfig,
   extractMcpServers,
+  extractFullMcpServers,
   extractToolAllowlists,
   getPermissionMode,
   getThinkingEnabled,
   captureAgentConfig,
   capturePartialAgentConfig,
+  captureSandboxableSnapshot,
+  readClaudeMdContent,
   formatAgentConfig,
   diffAgentConfig,
 } from './config';

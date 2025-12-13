@@ -34,6 +34,31 @@
 export * from './types';
 export { DockerSandboxManager, DockerNotAvailableError } from './docker';
 
+// Variant container building and execution
+export {
+  getHostClaudeVersion,
+  collectRequiredEnvVars,
+  validateVariantEnv,
+  generateDockerfile,
+  getBuildContextPath,
+  writeBuildContext,
+  buildVariantImage,
+  variantImageExists,
+  pruneVariantImage,
+  listVariantImages,
+  cleanupBuildContext,
+} from './variant-container';
+
+export type { BuildOptions, BuildResult } from './variant-container';
+
+export {
+  runInVariant,
+  runInVariantsParallel,
+  checkDockerAvailable,
+} from './variant-runner';
+
+export type { RunOptions, VariantRunResult } from './variant-runner';
+
 import { DockerSandboxManager } from './docker';
 import { SandboxManager, AvailabilityStatus } from './types';
 

@@ -10,6 +10,8 @@ export type {
   Variant,
   VariantStore,
   RegisterVariantOptions,
+  ContainerInfo,
+  SandboxableSnapshot,
 } from './types';
 
 // Store operations

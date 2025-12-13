@@ -1,10 +1,10 @@
 /**
- * Variant subcommands - register, list, show, diff, delete variants
+ * Variant subcommands - register, list, show, diff, delete, build, prune variants
  */
 
 import chalk from 'chalk';
-import { box } from '../../utils/ui';
-import { capturePartialAgentConfig, diffAgentConfig, formatAgentConfig } from '../../runs';
+import { box, padVisible } from '../../utils/ui';
+import { captureSandboxableSnapshot, diffAgentConfig, formatAgentConfig } from '../../runs';
 import {
   loadVariants,
   saveVariants,
@@ -18,6 +18,15 @@ import {
   Variant,
 } from '../../variants';
 import { getAgent } from '../../agents';
+import {
+  buildVariantImage,
+  variantImageExists,
+  pruneVariantImage,
+  collectRequiredEnvVars,
+  validateVariantEnv,
+  getHostClaudeVersion,
+  checkDockerAvailable,
+} from '../../sandbox';
 
 /**
  * Format a date string for display
@@ -40,11 +49,20 @@ function formatVariantRow(variant: Variant): string {
   const date = chalk.dim(formatDate(variant.createdAt));
   const name = chalk.cyan(variant.name);
   const desc = variant.description
-    ? chalk.dim(variant.description.substring(0, 40) + (variant.description.length > 40 ? '...' : ''))
+    ? chalk.dim(variant.description.substring(0, 30) + (variant.description.length > 30 ? '...' : ''))
     : chalk.dim('-');
-  const model = chalk.yellow(variant.snapshot.model.substring(0, 20));
+  const model = chalk.yellow(variant.snapshot.model.substring(0, 15));
 
-  return `  ${variant.id.substring(0, 20)}  ${name.padEnd(20)}  ${date}  ${model}  ${desc}`;
+  // Container status
+  let containerStatus: string;
+  if (variant.container) {
+    const exists = variantImageExists(variant);
+    containerStatus = exists ? chalk.green('✓ Built') : chalk.yellow('⚠ Missing');
+  } else {
+    containerStatus = chalk.dim('Not built');
+  }
+
+  return `  ${padVisible(variant.id.substring(0, 16), 16)}  ${padVisible(name, 15)}  ${padVisible(containerStatus, 12)}  ${padVisible(model, 15)}  ${desc}`;
 }
 
 /**
@@ -52,27 +70,33 @@ function formatVariantRow(variant: Variant): string {
  */
 export async function variantRegisterCommand(
   name: string,
-  options: { description?: string; changes?: string[]; agent?: string }
+  options: { description?: string; changes?: string[]; agent?: string; build?: boolean; force?: boolean }
 ): Promise<void> {
   const projectRoot = process.cwd();
   const store = loadVariants(projectRoot);
 
   // Check for duplicate name
   const existing = findVariantByName(store, name);
-  if (existing) {
+  if (existing && !options.force) {
     console.log(chalk.red(`\n  A variant with name "${name}" already exists.`));
     console.log(chalk.dim(`  ID: ${existing.id}`));
-    console.log(chalk.dim('  Use a different name or delete the existing variant.\n'));
+    console.log(chalk.dim('  Use --force to overwrite or use a different name.\n'));
     return;
+  }
+
+  // If force and existing, delete old variant
+  if (existing && options.force) {
+    deleteVariant(store, existing.id);
+    console.log(chalk.dim(`  Replacing existing variant "${name}"...`));
   }
 
   // Get the agent (defaults to claude-code)
   const agentName = options.agent || 'claude-code';
   const agent = getAgent(agentName);
 
-  // Capture current ambient config
-  console.log(chalk.dim(`  Capturing current agent configuration for ${agentName}...`));
-  const snapshot = await capturePartialAgentConfig(agent, projectRoot);
+  // Capture current ambient config with full MCP details
+  console.log(chalk.dim(`  Capturing configuration for ${agentName}...`));
+  const snapshot = await captureSandboxableSnapshot(agent, projectRoot);
 
   // Register the variant
   const variant = registerVariant(store, snapshot, {
@@ -84,14 +108,48 @@ export async function variantRegisterCommand(
   // Save
   saveVariants(projectRoot, store);
 
+  // Build container if requested
+  if (options.build) {
+    const dockerAvailable = await checkDockerAvailable();
+    if (!dockerAvailable) {
+      console.log(chalk.yellow('\n  Docker not available. Skipping container build.'));
+      console.log(chalk.dim('  Run `sniff variant build ' + name + '` later to build the container.\n'));
+    } else {
+      try {
+        console.log(chalk.dim('\n  Building container image...'));
+        const result = await buildVariantImage({
+          variant,
+          projectRoot,
+          verbose: false,
+        });
+
+        // Update variant with container info
+        variant.container = result.containerInfo;
+        saveVariants(projectRoot, store);
+
+        console.log(chalk.green(`  ✓ Container built: ${result.imageName}:${result.imageTag}`));
+        console.log(chalk.dim(`    Build time: ${(result.durationMs / 1000).toFixed(1)}s`));
+      } catch (err) {
+        console.log(chalk.red(`\n  Failed to build container: ${err}`));
+        console.log(chalk.dim('  Variant registered without container. Use `sniff variant build` to retry.\n'));
+      }
+    }
+  }
+
+  // Show required env vars
+  const requiredEnvVars = collectRequiredEnvVars(snapshot);
+
   console.log(box(
     chalk.bold('Variant Registered\n\n') +
     `ID: ${variant.id}\n` +
     `Name: ${chalk.cyan(variant.name)}\n` +
     (variant.description ? `Description: ${variant.description}\n` : '') +
+    (variant.container ? `Container: ${variant.container.imageName}:${variant.container.imageTag}\n` : '') +
     '\n' +
     chalk.bold('Captured Configuration:\n') +
-    formatAgentConfig(variant.snapshot),
+    formatAgentConfig(variant.snapshot) +
+    (requiredEnvVars.length > 0 ? '\n\n' + chalk.bold('Required Environment Variables:\n') +
+      requiredEnvVars.map(v => `  ${v}: ${process.env[v] ? chalk.green('✓ set') : chalk.red('✗ missing')}`).join('\n') : ''),
     'sniff variant register'
   ));
 }
@@ -120,8 +178,8 @@ export async function variantListCommand(options: { json?: boolean }): Promise<v
 
   console.log(box(
     chalk.bold(`${variants.length} variant${variants.length === 1 ? '' : 's'}\n\n`) +
-    chalk.dim('ID                    Name                  Created              Model                 Description\n') +
-    chalk.dim('─'.repeat(110)) + '\n' +
+    chalk.dim('ID                Name             Container     Model            Description\n') +
+    chalk.dim('─'.repeat(90)) + '\n' +
     variants.map(formatVariantRow).join('\n'),
     'Variants'
   ));
@@ -155,8 +213,9 @@ export async function variantShowCommand(options: { id: string; json?: boolean }
 
   // Display variant details
   const configHash = hashAgentConfig(variant.snapshot);
+  const requiredEnvVars = collectRequiredEnvVars(variant.snapshot);
 
-  const content = [
+  const contentParts = [
     chalk.bold('Variant Details\n'),
     `ID: ${variant.id}`,
     `Name: ${chalk.cyan(variant.name)}`,
@@ -164,16 +223,46 @@ export async function variantShowCommand(options: { id: string; json?: boolean }
     `Created: ${formatDate(variant.createdAt)}`,
     `Config Hash: ${configHash}`,
     '',
-    variant.changes && variant.changes.length > 0 ? [
-      chalk.bold('Declared Changes:'),
-      ...variant.changes.map(c => `  - ${c}`),
-      '',
-    ].join('\n') : '',
-    chalk.bold('Configuration Snapshot:'),
-    formatAgentConfig(variant.snapshot),
-  ].filter(Boolean).join('\n');
+  ];
 
-  console.log(box(content, `Variant: ${variant.name}`));
+  // Container info
+  if (variant.container) {
+    const exists = variantImageExists(variant);
+    contentParts.push(chalk.bold('Container:'));
+    contentParts.push(`  Image: ${variant.container.imageName}:${variant.container.imageTag}`);
+    contentParts.push(`  Claude Code: ${variant.container.claudeVersion}`);
+    contentParts.push(`  Built: ${formatDate(variant.container.builtAt)}`);
+    contentParts.push(`  Status: ${exists ? chalk.green('✓ Available') : chalk.yellow('⚠ Missing (rebuild required)')}`);
+    contentParts.push('');
+  } else {
+    contentParts.push(chalk.dim('Container: Not built'));
+    contentParts.push(chalk.dim('  Run `sniff variant build ' + variant.name + '` to create container'));
+    contentParts.push('');
+  }
+
+  // Required env vars
+  if (requiredEnvVars.length > 0) {
+    contentParts.push(chalk.bold('Required Environment Variables:'));
+    for (const envVar of requiredEnvVars) {
+      const isSet = !!process.env[envVar];
+      contentParts.push(`  ${envVar}: ${isSet ? chalk.green('✓ set') : chalk.red('✗ missing')}`);
+    }
+    contentParts.push('');
+  }
+
+  // Declared changes
+  if (variant.changes && variant.changes.length > 0) {
+    contentParts.push(chalk.bold('Declared Changes:'));
+    for (const change of variant.changes) {
+      contentParts.push(`  - ${change}`);
+    }
+    contentParts.push('');
+  }
+
+  contentParts.push(chalk.bold('Configuration Snapshot:'));
+  contentParts.push(formatAgentConfig(variant.snapshot));
+
+  console.log(box(contentParts.filter(Boolean).join('\n'), `Variant: ${variant.name}`));
 }
 
 /**
@@ -301,6 +390,16 @@ export async function variantDeleteCommand(options: { id: string; force?: boolea
     }
   }
 
+  // Also prune container image if it exists
+  if (variant.container) {
+    try {
+      pruneVariantImage(variant);
+      console.log(chalk.dim(`  Also removed container image: ${variant.container.imageName}:${variant.container.imageTag}`));
+    } catch {
+      // Ignore errors pruning image
+    }
+  }
+
   // Delete the variant
   const deleted = deleteVariant(store, variantId);
   if (deleted) {
@@ -309,4 +408,228 @@ export async function variantDeleteCommand(options: { id: string; force?: boolea
   } else {
     console.log(chalk.red(`\n  Failed to delete variant: ${variantId}\n`));
   }
+}
+
+/**
+ * Build container image for a variant
+ */
+export async function variantBuildCommand(
+  idOrName: string,
+  options: { verbose?: boolean }
+): Promise<void> {
+  const projectRoot = process.cwd();
+  const store = loadVariants(projectRoot);
+
+  // Resolve ID
+  const variantId = resolveVariantId(store, idOrName);
+  if (!variantId) {
+    console.log(chalk.red(`\n  Variant not found: ${idOrName}`));
+    console.log(chalk.dim('  Use `sniff variant list` to see available variants.\n'));
+    return;
+  }
+
+  const variant = getVariant(store, variantId);
+  if (!variant) {
+    console.log(chalk.red(`\n  Variant not found: ${variantId}\n`));
+    return;
+  }
+
+  // Check Docker availability
+  const dockerAvailable = await checkDockerAvailable();
+  if (!dockerAvailable) {
+    console.log(chalk.red('\n  Docker is not available.'));
+    console.log(chalk.dim('  Please install Docker and ensure it is running.\n'));
+    return;
+  }
+
+  // Check Claude Code version
+  const claudeVersion = getHostClaudeVersion();
+  if (!claudeVersion) {
+    console.log(chalk.red('\n  Could not determine Claude Code version.'));
+    console.log(chalk.dim('  Is Claude Code installed? Try: npm install -g @anthropic-ai/claude-code\n'));
+    return;
+  }
+
+  console.log(chalk.dim(`\n  Building container for variant "${variant.name}"...`));
+  console.log(chalk.dim(`  Claude Code version: ${claudeVersion}`));
+
+  try {
+    const result = await buildVariantImage({
+      variant,
+      projectRoot,
+      claudeVersion,
+      verbose: options.verbose,
+    });
+
+    // Update variant with container info
+    variant.container = result.containerInfo;
+    saveVariants(projectRoot, store);
+
+    console.log(box(
+      chalk.bold('Container Built\n\n') +
+      `Variant: ${chalk.cyan(variant.name)}\n` +
+      `Image: ${result.imageName}:${result.imageTag}\n` +
+      `Claude Code: ${claudeVersion}\n` +
+      `Build time: ${(result.durationMs / 1000).toFixed(1)}s\n\n` +
+      chalk.dim('Run with: sniff interview --use-variant ' + variant.name),
+      'sniff variant build'
+    ));
+  } catch (err) {
+    console.log(chalk.red(`\n  Build failed: ${err}\n`));
+    if (options.verbose) {
+      console.log(chalk.dim('  Run with --verbose for detailed build output.\n'));
+    }
+  }
+}
+
+/**
+ * Remove container image for a variant (keep variant config)
+ */
+export async function variantPruneCommand(
+  idOrName: string,
+  options: { force?: boolean }
+): Promise<void> {
+  const projectRoot = process.cwd();
+  const store = loadVariants(projectRoot);
+
+  // Resolve ID
+  const variantId = resolveVariantId(store, idOrName);
+  if (!variantId) {
+    console.log(chalk.red(`\n  Variant not found: ${idOrName}`));
+    console.log(chalk.dim('  Use `sniff variant list` to see available variants.\n'));
+    return;
+  }
+
+  const variant = getVariant(store, variantId);
+  if (!variant) {
+    console.log(chalk.red(`\n  Variant not found: ${variantId}\n`));
+    return;
+  }
+
+  if (!variant.container) {
+    console.log(chalk.yellow(`\n  Variant "${variant.name}" has no container image.\n`));
+    return;
+  }
+
+  const imageName = `${variant.container.imageName}:${variant.container.imageTag}`;
+
+  // Confirm unless --force
+  if (!options.force) {
+    const readline = await import('readline');
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+
+    const answer = await new Promise<string>((resolve) => {
+      rl.question(
+        chalk.yellow(`\n  Remove container image "${imageName}"? (y/N): `),
+        resolve
+      );
+    });
+    rl.close();
+
+    if (answer.toLowerCase() !== 'y') {
+      console.log(chalk.dim('\n  Cancelled.\n'));
+      return;
+    }
+  }
+
+  // Remove the image
+  const removed = pruneVariantImage(variant);
+  if (removed) {
+    // Clear container info but keep variant
+    variant.container = undefined;
+    saveVariants(projectRoot, store);
+    console.log(chalk.green(`\n  ✓ Removed container image: ${imageName}`));
+    console.log(chalk.dim(`  Variant "${variant.name}" still registered. Use \`sniff variant build\` to rebuild.\n`));
+  } else {
+    console.log(chalk.yellow(`\n  Could not remove image (may already be deleted).`));
+    // Still clear container info
+    variant.container = undefined;
+    saveVariants(projectRoot, store);
+    console.log(chalk.dim(`  Cleared container reference from variant.\n`));
+  }
+}
+
+/**
+ * Use a variant (activate for subsequent commands)
+ */
+export async function variantUseCommand(idOrName: string): Promise<void> {
+  const projectRoot = process.cwd();
+  const store = loadVariants(projectRoot);
+
+  // Resolve ID
+  const variantId = resolveVariantId(store, idOrName);
+  if (!variantId) {
+    console.log(chalk.red(`\n  Variant not found: ${idOrName}`));
+    console.log(chalk.dim('  Use `sniff variant list` to see available variants.\n'));
+    return;
+  }
+
+  const variant = getVariant(store, variantId);
+  if (!variant) {
+    console.log(chalk.red(`\n  Variant not found: ${variantId}\n`));
+    return;
+  }
+
+  // Check if variant has container
+  if (!variant.container) {
+    console.log(chalk.yellow(`\n  Warning: Variant "${variant.name}" has no container.`));
+    console.log(chalk.dim('  Run `sniff variant build ' + variant.name + '` to build it first.\n'));
+  }
+
+  // Validate env vars
+  const envValidation = validateVariantEnv(variant.snapshot);
+  if (envValidation.missing.length > 0) {
+    console.log(chalk.yellow(`\n  Warning: Missing environment variables:`));
+    for (const v of envValidation.missing) {
+      console.log(chalk.red(`    ${v}`));
+    }
+    console.log('');
+  }
+
+  // Store active variant in project settings
+  const settingsPath = `${projectRoot}/.sniffbench/active-variant`;
+  const fs = await import('fs');
+  const path = await import('path');
+  fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+  fs.writeFileSync(settingsPath, variant.name);
+
+  console.log(chalk.green(`\n  ✓ Now using variant: ${variant.name}`));
+  console.log(chalk.dim(`  Subsequent interviews will use this variant.\n`));
+}
+
+/**
+ * Stop using active variant
+ */
+export async function variantUnuseCommand(): Promise<void> {
+  const projectRoot = process.cwd();
+  const settingsPath = `${projectRoot}/.sniffbench/active-variant`;
+  const fs = await import('fs');
+
+  if (!fs.existsSync(settingsPath)) {
+    console.log(chalk.dim('\n  No variant is currently active.\n'));
+    return;
+  }
+
+  const currentVariant = fs.readFileSync(settingsPath, 'utf-8').trim();
+  fs.unlinkSync(settingsPath);
+
+  console.log(chalk.green(`\n  ✓ Stopped using variant: ${currentVariant}`));
+  console.log(chalk.dim(`  Subsequent interviews will use the current ambient configuration.\n`));
+}
+
+/**
+ * Get the currently active variant name, if any
+ */
+export function getActiveVariant(projectRoot: string): string | null {
+  const fs = require('fs');
+  const settingsPath = `${projectRoot}/.sniffbench/active-variant`;
+
+  if (fs.existsSync(settingsPath)) {
+    return fs.readFileSync(settingsPath, 'utf-8').trim();
+  }
+
+  return null;
 }

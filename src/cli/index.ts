@@ -27,6 +27,10 @@ import {
   variantShowCommand,
   variantDiffCommand,
   variantDeleteCommand,
+  variantBuildCommand,
+  variantPruneCommand,
+  variantUseCommand,
+  variantUnuseCommand,
 } from './commands/variant';
 
 const program = new Command();
@@ -128,6 +132,8 @@ program
   .option('--compare', 'Compare new responses against existing baselines')
   .option('--run <label>', 'Save results to a named run (enables run tracking)')
   .option('--variant <name>', 'Link run to a registered variant (auto-detects if not provided)')
+  .option('--use-variant <name>', 'Run in sandboxed variant container')
+  .option('--variants <names>', 'Run on multiple variants in parallel (comma-separated)')
   .action(interviewCommand);
 
 // Runs command with subcommands
@@ -170,6 +176,8 @@ variantCmd
   .option('-d, --description <text>', 'Description of the variant')
   .option('-c, --changes <changes...>', 'List of explicit changes in this variant')
   .option('-a, --agent <name>', 'Agent type to capture config for', 'claude-code')
+  .option('-b, --build', 'Build container image after registration')
+  .option('-f, --force', 'Overwrite existing variant with same name')
   .action((name, opts) => variantRegisterCommand(name, opts));
 
 variantCmd
@@ -199,6 +207,31 @@ variantCmd
   .argument('<id>', 'Variant ID or name')
   .option('-f, --force', 'Skip confirmation')
   .action((id, opts) => variantDeleteCommand({ id, ...opts }));
+
+variantCmd
+  .command('build')
+  .description('Build or rebuild container image for a variant')
+  .argument('<name>', 'Variant ID or name')
+  .option('-v, --verbose', 'Show detailed build output')
+  .action((name, opts) => variantBuildCommand(name, opts));
+
+variantCmd
+  .command('prune')
+  .description('Remove container image for a variant (keeps variant config)')
+  .argument('<name>', 'Variant ID or name')
+  .option('-f, --force', 'Skip confirmation')
+  .action((name, opts) => variantPruneCommand(name, opts));
+
+variantCmd
+  .command('use')
+  .description('Activate a variant for subsequent interviews')
+  .argument('<name>', 'Variant ID or name')
+  .action((name) => variantUseCommand(name));
+
+variantCmd
+  .command('unuse')
+  .description('Deactivate the current variant')
+  .action(() => variantUnuseCommand());
 
 // Default to list if no subcommand
 variantCmd.action(() => variantListCommand({}));
