@@ -74,7 +74,12 @@ export async function runInVariant(
   const dockerArgs = buildDockerArgs(fullImageName, projectRoot, { ...resolvedEnv, ...env }, variant);
 
   // Add claude arguments - skip permissions since container is already sandboxed
-  dockerArgs.push('-p', '--dangerously-skip-permissions', prompt);
+  dockerArgs.push('-p', '--dangerously-skip-permissions', '--', prompt);
+
+  // Debug: show the docker command being run
+  if (process.env.SNIFF_DEBUG) {
+    console.error('[DEBUG] docker args:', JSON.stringify(dockerArgs, null, 2));
+  }
 
   const startTime = Date.now();
   let timedOut = false;
@@ -156,6 +161,14 @@ function buildDockerArgs(
   _variant: Variant
 ): string[] {
   const args: string[] = ['run', '--rm'];
+
+  // Run as current user to avoid root (required for --dangerously-skip-permissions)
+  const uid = process.getuid?.() ?? 1000;
+  const gid = process.getgid?.() ?? 1000;
+  args.push('--user', `${uid}:${gid}`);
+
+  // Set HOME to /tmp so Claude Code can write its config/debug files
+  args.push('-e', 'HOME=/tmp');
 
   // Mount project directory read-only
   args.push('-v', `${projectRoot}:/workspace:ro`);
