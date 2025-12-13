@@ -10,6 +10,14 @@ import type { Variant } from '../variants/types';
 import { collectRequiredEnvVars } from './variant-container';
 import { checkMissingEnvVars, getEnvVars, getEnvFilePath } from '../utils/env';
 
+/** Parsed streaming event from Claude */
+export interface StreamEvent {
+  type: 'tool_use' | 'text' | 'result' | 'error';
+  tool?: { name: string; input: Record<string, unknown> };
+  text?: string;
+  error?: string;
+}
+
 export interface RunOptions {
   /** Project root to mount into container */
   projectRoot: string;
@@ -19,8 +27,10 @@ export interface RunOptions {
   timeoutMs?: number;
   /** Whether to stream output */
   stream?: boolean;
-  /** Callback for streaming output */
+  /** Callback for streaming output - raw */
   onOutput?: (type: 'stdout' | 'stderr', data: string) => void;
+  /** Callback for parsed streaming events */
+  onStreamEvent?: (event: StreamEvent) => void;
 }
 
 export interface VariantRunResult {
@@ -51,7 +61,7 @@ export async function runInVariant(
     throw new Error(`Variant "${variant.name}" has no container image. Run "sniff variant build ${variant.name}" first.`);
   }
 
-  const { projectRoot, env = {}, timeoutMs = DEFAULT_TIMEOUT_MS, stream, onOutput } = options;
+  const { projectRoot, env = {}, timeoutMs = DEFAULT_TIMEOUT_MS, stream, onOutput, onStreamEvent } = options;
 
   // Collect required env vars and check availability (from process.env and .sniffbench/.env)
   const requiredEnvVars = collectRequiredEnvVars(variant.snapshot);
@@ -74,7 +84,8 @@ export async function runInVariant(
   const dockerArgs = buildDockerArgs(fullImageName, projectRoot, { ...resolvedEnv, ...env }, variant);
 
   // Add claude arguments - skip permissions since container is already sandboxed
-  dockerArgs.push('-p', '--dangerously-skip-permissions', '--', prompt);
+  // Use stream-json for real-time output
+  dockerArgs.push('-p', '--dangerously-skip-permissions', '--output-format', 'stream-json', '--', prompt);
 
   // Debug: show the docker command being run
   if (process.env.SNIFF_DEBUG) {
@@ -88,27 +99,64 @@ export async function runInVariant(
   const result = await new Promise<VariantRunResult>((resolve, reject) => {
     let stdout = '';
     let stderr = '';
-    let process: ChildProcess;
+    let finalText = '';  // Accumulated text content for answer
+    let jsonBuffer = '';  // Buffer for incomplete JSON lines
+    let proc: ChildProcess;
     let timeoutId: NodeJS.Timeout | undefined;
 
     try {
-      process = spawn('docker', dockerArgs);
+      proc = spawn('docker', dockerArgs);
     } catch (err) {
       reject(new Error(`Failed to spawn docker: ${err}`));
       return;
     }
 
-    // Handle stdout
-    process.stdout?.on('data', (data) => {
+    // Parse JSON line and emit event
+    const parseJsonLine = (line: string) => {
+      if (!line.trim()) return;
+      try {
+        const event = JSON.parse(line);
+        // Handle different event types from stream-json
+        if (event.type === 'assistant' && event.message?.content) {
+          for (const block of event.message.content) {
+            if (block.type === 'tool_use' && onStreamEvent) {
+              onStreamEvent({ type: 'tool_use', tool: { name: block.name, input: block.input } });
+            } else if (block.type === 'text' && block.text) {
+              finalText += block.text;
+              if (onStreamEvent) {
+                onStreamEvent({ type: 'text', text: block.text });
+              }
+            }
+          }
+        } else if (event.type === 'result' && event.result) {
+          finalText = event.result;
+          if (onStreamEvent) {
+            onStreamEvent({ type: 'result', text: event.result });
+          }
+        }
+      } catch {
+        // Not valid JSON, might be partial - ignore
+      }
+    };
+
+    // Handle stdout - parse JSON lines
+    proc.stdout?.on('data', (data) => {
       const str = data.toString();
       stdout += str;
       if (stream && onOutput) {
         onOutput('stdout', str);
       }
+      // Parse JSON lines for streaming events
+      jsonBuffer += str;
+      const lines = jsonBuffer.split('\n');
+      jsonBuffer = lines.pop() || '';  // Keep incomplete line in buffer
+      for (const line of lines) {
+        parseJsonLine(line);
+      }
     });
 
     // Handle stderr
-    process.stderr?.on('data', (data) => {
+    proc.stderr?.on('data', (data) => {
       const str = data.toString();
       stderr += str;
       if (stream && onOutput) {
@@ -120,30 +168,27 @@ export async function runInVariant(
     if (timeoutMs > 0) {
       timeoutId = setTimeout(() => {
         timedOut = true;
-        process.kill('SIGTERM');
-        // Give it a moment to clean up, then force kill
-        setTimeout(() => process.kill('SIGKILL'), 5000);
+        proc.kill('SIGTERM');
+        setTimeout(() => proc.kill('SIGKILL'), 5000);
       }, timeoutMs);
     }
 
     // Handle completion
-    process.on('close', (code) => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
+    proc.on('close', (code) => {
+      if (timeoutId) clearTimeout(timeoutId);
+      // Parse any remaining JSON in buffer
+      if (jsonBuffer.trim()) parseJsonLine(jsonBuffer);
       resolve({
         exitCode: code ?? 1,
-        stdout,
+        stdout: finalText || stdout,  // Use parsed text if available
         stderr,
         durationMs: Date.now() - startTime,
         timedOut,
       });
     });
 
-    process.on('error', (err) => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
+    proc.on('error', (err) => {
+      if (timeoutId) clearTimeout(timeoutId);
       reject(new Error(`Docker process error: ${err.message}`));
     });
   });

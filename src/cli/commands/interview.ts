@@ -400,10 +400,15 @@ async function getAgentResponse(
       projectRoot: cwd,
       timeoutMs,
       stream: true,
-      onOutput: (type, data) => {
-        // Stream output for progress visibility
-        if (type === 'stdout' && onEvent) {
-          onEvent({ type: 'text_delta', text: data });
+      onStreamEvent: (event) => {
+        if (!onEvent) return;
+        if (event.type === 'tool_use' && event.tool) {
+          onEvent({
+            type: 'tool_start',
+            tool: { id: '', name: event.tool.name, input: event.tool.input, timestamp: Date.now() }
+          });
+        } else if (event.type === 'text' && event.text) {
+          onEvent({ type: 'text_delta', text: event.text });
         }
       },
     });
