@@ -213,22 +213,29 @@ function extractNpmPackages(snapshot: SandboxableSnapshot): string[] {
 
 /**
  * Generate settings.json content for the container
+ *
+ * Note: We don't include allowedTools here because:
+ * 1. Container uses bypassPermissions mode (no permission prompts)
+ * 2. SDK interprets allowedTools as restrictive (only these tools allowed)
+ * 3. CLI tools like osgrep are available via Bash regardless
+ *
+ * The allowedTools in the variant snapshot is used for:
+ * - Tracking what tools the variant was configured with
+ * - Determining which CLI tools to install in the container
  */
 function generateSettingsJson(snapshot: SandboxableSnapshot): string {
   const settings: Record<string, unknown> = {};
 
-  // Add allowed/disallowed tools
-  if (snapshot.allowedTools?.length) {
-    settings.allowedTools = snapshot.allowedTools;
-  }
+  // Don't include allowedTools - SDK interprets it as restrictive
+  // and we're already using bypassPermissions mode
+
+  // Only include disallowedTools if explicitly blocking something
   if (snapshot.disallowedTools?.length) {
     settings.disallowedTools = snapshot.disallowedTools;
   }
 
-  // Add permission mode if not default
-  if (snapshot.permissionMode && snapshot.permissionMode !== 'default') {
-    settings.permissionMode = snapshot.permissionMode;
-  }
+  // Permission mode is set in entrypoint, not here
+  // But include if someone wants to override
 
   return JSON.stringify(settings, null, 2);
 }
