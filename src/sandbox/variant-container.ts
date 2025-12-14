@@ -303,6 +303,8 @@ const options = {
   cwd: '/workspace',
   // Container is already sandboxed - bypass permission prompts
   permissionMode: 'bypassPermissions',
+  // Use claude_code preset to enable CLAUDE.md reading
+  systemPrompt: { type: 'preset', preset: 'claude_code' },
   // Use project settings baked into the container
   settingSources: ['project'],
   // Enable partial messages for streaming
