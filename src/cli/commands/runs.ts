@@ -16,6 +16,7 @@ import {
   formatAgentConfig,
   Run,
 } from '../../runs';
+import { loadVariants, getVariant } from '../../variants';
 
 /**
  * Format a date string for display
@@ -37,7 +38,7 @@ function formatDate(isoDate: string): string {
 /**
  * Format a run for list display
  */
-function formatRunRow(run: Run): string {
+function formatRunRow(run: Run, variantName?: string): string {
   const caseCount = Object.keys(run.cases).length;
   const gradedCount = Object.values(run.cases).filter(c => c.grade !== undefined).length;
   const avgGrade = gradedCount > 0
@@ -47,14 +48,15 @@ function formatRunRow(run: Run): string {
   // Truncate visible text BEFORE applying colors, then pad the colored result
   const idCol = run.id.substring(0, 20);
   const labelText = run.label ? `[${run.label}]` : '';
-  const labelCol = padVisible(labelText ? chalk.cyan(labelText.substring(0, 18)) : '', 20);
-  const dateCol = padVisible(chalk.dim(formatDate(run.createdAt)), 22);
-  const agentCol = padVisible(chalk.yellow(run.agent.name.substring(0, 12)), 12);
-  const modelCol = padVisible(chalk.dim(run.agent.model.substring(0, 20)), 20);
-  const casesCol = padVisible(`${gradedCount}/${caseCount} cases`, 12);
-  const gradeCol = gradedCount > 0 ? chalk.green(`${avgGrade}/10`) : chalk.dim('not graded');
+  const labelCol = padVisible(labelText ? chalk.cyan(labelText.substring(0, 14)) : '', 16);
+  const variantText = variantName || '-';
+  const variantCol = padVisible(variantName ? chalk.magenta(variantText.substring(0, 14)) : chalk.dim('-'), 16);
+  const dateCol = padVisible(chalk.dim(formatDate(run.createdAt)), 20);
+  const agentCol = padVisible(chalk.yellow(run.agent.name.substring(0, 10)), 10);
+  const casesCol = padVisible(`${gradedCount}/${caseCount}`, 8);
+  const gradeCol = gradedCount > 0 ? chalk.green(`${avgGrade}/10`) : chalk.dim('N/A');
 
-  return `  ${idCol}  ${labelCol}  ${dateCol}  ${agentCol}  ${modelCol}  ${casesCol}  ${gradeCol}`;
+  return `  ${idCol}  ${labelCol}  ${variantCol}  ${dateCol}  ${agentCol}  ${casesCol}  ${gradeCol}`;
 }
 
 /**
@@ -76,6 +78,16 @@ export async function runsListCommand(options: { json?: boolean }): Promise<void
   const store = loadRuns(projectRoot);
   const runs = listRuns(store);
 
+  // Load variant store to look up variant names
+  const variantStore = loadVariants(projectRoot);
+
+  // Helper to get variant name from ID
+  const getVariantName = (variantId?: string): string | undefined => {
+    if (!variantId) return undefined;
+    const variant = getVariant(variantStore, variantId);
+    return variant?.name;
+  };
+
   if (options.json) {
     console.log(JSON.stringify(runs, null, 2));
     return;
@@ -92,9 +104,9 @@ export async function runsListCommand(options: { json?: boolean }): Promise<void
 
   console.log(box(
     chalk.bold(`${runs.length} run${runs.length === 1 ? '' : 's'}\n\n`) +
-    chalk.dim('ID                    Label                 Date                 Agent         Cases       Grade\n') +
-    chalk.dim('─'.repeat(100)) + '\n' +
-    runs.map(formatRunRow).join('\n'),
+    chalk.dim('ID                    Label             Variant           Date                  Agent       Cases     Grade\n') +
+    chalk.dim('─'.repeat(110)) + '\n' +
+    runs.map(run => formatRunRow(run, getVariantName(run.agent.variantId))).join('\n'),
     'Runs'
   ));
 }

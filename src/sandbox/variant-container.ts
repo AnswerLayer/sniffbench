@@ -118,10 +118,14 @@ export function generateDockerfile(
   lines.push('RUN npm install');
   lines.push('');
 
-  // Install npm-based MCP servers globally
+  // Install npm packages (MCP servers and CLI tools from allowedTools)
   const npmPackages = extractNpmPackages(snapshot);
   if (npmPackages.length > 0) {
-    lines.push('# Install MCP server packages');
+    // Some packages require native compilation (node-gyp)
+    lines.push('# Install build dependencies for native modules');
+    lines.push('RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*');
+    lines.push('');
+    lines.push('# Install npm packages (MCP servers and CLI tools)');
     for (const pkg of npmPackages) {
       lines.push(`RUN npm install -g ${pkg}`);
     }
@@ -160,11 +164,38 @@ export function generateDockerfile(
 }
 
 /**
- * Extract npm packages to install from MCP server configs
+ * Extract CLI tool names from allowedTools patterns
+ * Parses patterns like "Bash(osgrep:*)" to extract "osgrep"
+ */
+function extractCliToolsFromAllowedTools(allowedTools?: string[]): string[] {
+  if (!allowedTools) return [];
+
+  const tools: string[] = [];
+  // Pattern: Bash(toolname:*) or Bash(toolname:args)
+  const bashToolPattern = /^Bash\(([^:]+):/;
+
+  for (const tool of allowedTools) {
+    const match = tool.match(bashToolPattern);
+    if (match) {
+      const toolName = match[1];
+      // Skip built-in commands that don't need npm install
+      const builtins = ['git', 'npm', 'node', 'npx', 'docker', 'make', 'ls', 'cat', 'grep', 'find', 'mkdir', 'rm', 'mv', 'cp', 'echo', 'pwd', 'cd', 'python', 'python3', 'pip', 'pytest', 'ruff', 'mypy'];
+      if (!builtins.includes(toolName)) {
+        tools.push(toolName);
+      }
+    }
+  }
+
+  return [...new Set(tools)]; // Deduplicate
+}
+
+/**
+ * Extract npm packages to install from MCP server configs and allowedTools
  */
 function extractNpmPackages(snapshot: SandboxableSnapshot): string[] {
   const packages: string[] = [];
 
+  // From MCP server configs
   if (snapshot.mcpServersFull) {
     for (const server of Object.values(snapshot.mcpServersFull)) {
       if (server.type === 'stdio' && server.npmPackage) {
@@ -173,7 +204,11 @@ function extractNpmPackages(snapshot: SandboxableSnapshot): string[] {
     }
   }
 
-  return packages;
+  // From allowedTools - CLI tools that need npm install
+  const cliTools = extractCliToolsFromAllowedTools(snapshot.allowedTools);
+  packages.push(...cliTools);
+
+  return [...new Set(packages)]; // Deduplicate
 }
 
 /**
