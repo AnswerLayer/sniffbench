@@ -409,30 +409,39 @@ async function getAgentResponse(
           });
         } else if (event.type === 'text' && event.text) {
           onEvent({ type: 'text_delta', text: event.text });
+        } else if (event.type === 'thinking' && event.text) {
+          onEvent({ type: 'thinking', text: event.text });
         }
       },
     });
 
     // Convert VariantRunResult to AgentResult format
-    // Container output doesn't have detailed metrics - use defaults
+    // Use metrics captured from SDK result message
+    const toolCalls = (containerResult.toolCalls || []).map((tc, i) => ({
+      id: `tool-${i}`,
+      name: tc.name,
+      input: tc.input,
+      timestamp: Date.now(),
+    }));
+
     return {
       success: containerResult.exitCode === 0 && !containerResult.timedOut,
       answer: containerResult.stdout.trim(),
       error: containerResult.exitCode !== 0 ? containerResult.stderr || `Exit code: ${containerResult.exitCode}` : undefined,
       durationMs: containerResult.durationMs,
       timedOut: containerResult.timedOut,
-      model: variant.snapshot.model || 'unknown',
-      tokens: {
+      model: containerResult.model || variant.snapshot.model || 'unknown',
+      tokens: containerResult.tokens || {
         inputTokens: 0,
         outputTokens: 0,
         cacheReadTokens: 0,
         cacheWriteTokens: 0,
         totalTokens: 0,
       },
-      costUsd: 0,
-      numTurns: 1,
-      toolCalls: [],
-      toolsUsed: [],
+      costUsd: containerResult.costUsd || 0,
+      numTurns: containerResult.numTurns || 1,
+      toolCalls,
+      toolsUsed: [...new Set((containerResult.toolCalls || []).map(tc => tc.name))],
     };
   }
 

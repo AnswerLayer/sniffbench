@@ -99,10 +99,11 @@ export function validateVariantEnv(snapshot: SandboxableSnapshot): {
 
 /**
  * Generate Dockerfile content for a variant
+ * Uses SDK-based entrypoint for proper streaming support
  */
 export function generateDockerfile(
   snapshot: SandboxableSnapshot,
-  claudeVersion: string
+  _claudeVersion: string
 ): string {
   const lines: string[] = [];
 
@@ -110,13 +111,14 @@ export function generateDockerfile(
   lines.push(`FROM ${BASE_IMAGE}`);
   lines.push('');
 
-  // Install Claude Code
-  lines.push('# Install Claude Code');
-  lines.push(`ARG CLAUDE_VERSION=${claudeVersion}`);
-  lines.push('RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_VERSION}');
+  // Create app directory and install SDK locally (ESM requires local install)
+  lines.push('# Set up app with SDK');
+  lines.push('WORKDIR /app');
+  lines.push('COPY package.json /app/package.json');
+  lines.push('RUN npm install');
   lines.push('');
 
-  // Install npm-based MCP servers
+  // Install npm-based MCP servers globally
   const npmPackages = extractNpmPackages(snapshot);
   if (npmPackages.length > 0) {
     lines.push('# Install MCP server packages');
@@ -129,6 +131,11 @@ export function generateDockerfile(
   // Create config directories
   lines.push('# Set up config directories');
   lines.push('RUN mkdir -p /root/.claude /workspace/.claude');
+  lines.push('');
+
+  // Copy entrypoint script
+  lines.push('# Copy SDK entrypoint script');
+  lines.push('COPY entrypoint.mjs /app/entrypoint.mjs');
   lines.push('');
 
   // Copy variant-specific configs
@@ -145,9 +152,9 @@ export function generateDockerfile(
   lines.push('WORKDIR /workspace');
   lines.push('');
 
-  // Entry point
-  lines.push('# Entry point - claude CLI');
-  lines.push('ENTRYPOINT ["claude"]');
+  // Entry point - SDK runner script
+  lines.push('# Entry point - SDK runner for streaming support');
+  lines.push('ENTRYPOINT ["node", "/app/entrypoint.mjs"]');
 
   return lines.join('\n');
 }
@@ -225,6 +232,66 @@ function generateClaudeConfig(snapshot: SandboxableSnapshot): string {
 }
 
 /**
+ * Generate package.json for the container's /app directory
+ */
+function generatePackageJson(): string {
+  const pkg = {
+    name: 'sniffbench-variant-runner',
+    version: '1.0.0',
+    type: 'module',
+    dependencies: {
+      '@anthropic-ai/claude-agent-sdk': 'latest',
+    },
+  };
+  return JSON.stringify(pkg, null, 2);
+}
+
+/**
+ * Generate the SDK entrypoint script
+ * This runs inside the container and outputs SDK messages as JSON lines
+ */
+function generateEntrypointScript(): string {
+  return `/**
+ * SDK-based entrypoint for variant containers
+ * Outputs SDK messages as JSON lines for the host to parse
+ */
+import { query } from '@anthropic-ai/claude-agent-sdk';
+
+const prompt = process.argv[2];
+
+if (!prompt) {
+  console.error(JSON.stringify({ type: 'error', message: 'No prompt provided' }));
+  process.exit(1);
+}
+
+const options = {
+  cwd: '/workspace',
+  // Container is already sandboxed - bypass permission prompts
+  permissionMode: 'bypassPermissions',
+  // Use project settings baked into the container
+  settingSources: ['project'],
+  // Enable partial messages for streaming
+  includePartialMessages: true,
+};
+
+async function run() {
+  try {
+    for await (const message of query({ prompt, options })) {
+      // Output each message as JSON line for host to parse
+      console.log(JSON.stringify(message));
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(JSON.stringify({ type: 'error', message: errorMessage }));
+    process.exit(1);
+  }
+}
+
+run();
+`;
+}
+
+/**
  * Generate a unique image tag based on content hash
  */
 function generateImageTag(variant: Variant, claudeVersion: string): string {
@@ -259,6 +326,14 @@ export function writeBuildContext(
   // Write Dockerfile
   const dockerfile = generateDockerfile(snapshot, claudeVersion);
   fs.writeFileSync(path.join(contextPath, 'Dockerfile'), dockerfile);
+
+  // Write package.json for SDK installation
+  const packageJson = generatePackageJson();
+  fs.writeFileSync(path.join(contextPath, 'package.json'), packageJson);
+
+  // Write SDK entrypoint script (.mjs for ESM)
+  const entrypoint = generateEntrypointScript();
+  fs.writeFileSync(path.join(contextPath, 'entrypoint.mjs'), entrypoint);
 
   // Write CLAUDE.md if present
   if (snapshot.claudeMdContent) {

@@ -10,12 +10,13 @@ import type { Variant } from '../variants/types';
 import { collectRequiredEnvVars } from './variant-container';
 import { checkMissingEnvVars, getEnvVars, getEnvFilePath } from '../utils/env';
 
-/** Parsed streaming event from Claude */
+/** Parsed streaming event from Claude SDK */
 export interface StreamEvent {
-  type: 'tool_use' | 'text' | 'result' | 'error';
+  type: 'tool_use' | 'text' | 'thinking' | 'result' | 'error' | 'init';
   tool?: { name: string; input: Record<string, unknown> };
   text?: string;
   error?: string;
+  model?: string;
 }
 
 export interface RunOptions {
@@ -44,6 +45,22 @@ export interface VariantRunResult {
   durationMs: number;
   /** Whether execution timed out */
   timedOut: boolean;
+  /** Model used */
+  model?: string;
+  /** Token usage from SDK */
+  tokens?: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
+    totalTokens: number;
+  };
+  /** Cost in USD */
+  costUsd?: number;
+  /** Number of turns */
+  numTurns?: number;
+  /** Tool calls made */
+  toolCalls?: Array<{ name: string; input: Record<string, unknown> }>;
 }
 
 /** Default timeout: 5 minutes */
@@ -83,9 +100,8 @@ export async function runInVariant(
   const fullImageName = `${variant.container.imageName}:${variant.container.imageTag}`;
   const dockerArgs = buildDockerArgs(fullImageName, projectRoot, { ...resolvedEnv, ...env }, variant);
 
-  // Add claude arguments - skip permissions since container is already sandboxed
-  // Use stream-json for real-time output
-  dockerArgs.push('-p', '--dangerously-skip-permissions', '--output-format', 'stream-json', '--', prompt);
+  // Add prompt as argument to SDK entrypoint script
+  dockerArgs.push(prompt);
 
   // Debug: show the docker command being run
   if (process.env.SNIFF_DEBUG) {
@@ -104,6 +120,13 @@ export async function runInVariant(
     let proc: ChildProcess;
     let timeoutId: NodeJS.Timeout | undefined;
 
+    // Metrics captured from SDK messages
+    let model = '';
+    let tokens: VariantRunResult['tokens'] | undefined;
+    let costUsd: number | undefined;
+    let numTurns: number | undefined;
+    const toolCalls: Array<{ name: string; input: Record<string, unknown> }> = [];
+
     try {
       proc = spawn('docker', dockerArgs);
     } catch (err) {
@@ -111,27 +134,100 @@ export async function runInVariant(
       return;
     }
 
-    // Parse JSON line and emit event
-    const parseJsonLine = (line: string) => {
+    // Parse SDK message and emit event
+    // Matches the format used by claude-code.ts processMessage()
+    const parseSDKMessage = (line: string) => {
       if (!line.trim()) return;
       try {
-        const event = JSON.parse(line);
-        // Handle different event types from stream-json
-        if (event.type === 'assistant' && event.message?.content) {
-          for (const block of event.message.content) {
-            if (block.type === 'tool_use' && onStreamEvent) {
-              onStreamEvent({ type: 'tool_use', tool: { name: block.name, input: block.input } });
-            } else if (block.type === 'text' && block.text) {
-              finalText += block.text;
+        const message = JSON.parse(line);
+
+        // Debug: log all messages
+        if (process.env.SNIFF_DEBUG) {
+          console.error('[DEBUG] SDK message:', message.type, JSON.stringify(message).substring(0, 300));
+        }
+
+        switch (message.type) {
+          case 'system': {
+            // Init message with model info
+            if (message.subtype === 'init') {
+              model = message.model || '';
               if (onStreamEvent) {
-                onStreamEvent({ type: 'text', text: block.text });
+                onStreamEvent({ type: 'init', model: message.model });
               }
             }
+            break;
           }
-        } else if (event.type === 'result' && event.result) {
-          finalText = event.result;
-          if (onStreamEvent) {
-            onStreamEvent({ type: 'result', text: event.result });
+
+          case 'assistant': {
+            // Tool use blocks come through assistant messages
+            const content = message.message?.content;
+            if (Array.isArray(content)) {
+              for (const block of content) {
+                if (block.type === 'tool_use') {
+                  toolCalls.push({ name: block.name, input: block.input as Record<string, unknown> });
+                  if (onStreamEvent) {
+                    onStreamEvent({
+                      type: 'tool_use',
+                      tool: { name: block.name, input: block.input as Record<string, unknown> }
+                    });
+                  }
+                }
+              }
+            }
+            break;
+          }
+
+          case 'stream_event': {
+            // Real-time text deltas and thinking
+            const event = message.event;
+            if (event?.type === 'content_block_delta') {
+              const delta = event.delta;
+              if (delta?.type === 'text_delta' && delta.text) {
+                finalText += delta.text;
+                if (onStreamEvent) {
+                  onStreamEvent({ type: 'text', text: delta.text });
+                }
+              } else if (delta?.type === 'thinking_delta' && delta.thinking) {
+                if (onStreamEvent) {
+                  onStreamEvent({ type: 'thinking', text: delta.thinking });
+                }
+              }
+            }
+            break;
+          }
+
+          case 'result': {
+            // Final result with metrics
+            if (message.result && !finalText) {
+              finalText = message.result;
+            }
+
+            // Extract usage metrics from result message
+            const usage = message.usage;
+            if (usage) {
+              tokens = {
+                inputTokens: usage.input_tokens || 0,
+                outputTokens: usage.output_tokens || 0,
+                cacheReadTokens: usage.cache_read_input_tokens || 0,
+                cacheWriteTokens: usage.cache_creation_input_tokens || 0,
+                totalTokens: (usage.input_tokens || 0) + (usage.output_tokens || 0),
+              };
+            }
+            costUsd = message.total_cost_usd;
+            numTurns = message.num_turns;
+
+            if (onStreamEvent) {
+              onStreamEvent({ type: 'result', text: message.result || finalText });
+            }
+            break;
+          }
+
+          case 'error': {
+            // Error from entrypoint
+            if (onStreamEvent) {
+              onStreamEvent({ type: 'error', error: message.message });
+            }
+            break;
           }
         }
       } catch {
@@ -139,19 +235,19 @@ export async function runInVariant(
       }
     };
 
-    // Handle stdout - parse JSON lines
+    // Handle stdout - parse SDK JSON messages
     proc.stdout?.on('data', (data) => {
       const str = data.toString();
       stdout += str;
       if (stream && onOutput) {
         onOutput('stdout', str);
       }
-      // Parse JSON lines for streaming events
+      // Parse JSON lines for SDK messages
       jsonBuffer += str;
       const lines = jsonBuffer.split('\n');
       jsonBuffer = lines.pop() || '';  // Keep incomplete line in buffer
       for (const line of lines) {
-        parseJsonLine(line);
+        parseSDKMessage(line);
       }
     });
 
@@ -177,13 +273,18 @@ export async function runInVariant(
     proc.on('close', (code) => {
       if (timeoutId) clearTimeout(timeoutId);
       // Parse any remaining JSON in buffer
-      if (jsonBuffer.trim()) parseJsonLine(jsonBuffer);
+      if (jsonBuffer.trim()) parseSDKMessage(jsonBuffer);
       resolve({
         exitCode: code ?? 1,
         stdout: finalText || stdout,  // Use parsed text if available
         stderr,
         durationMs: Date.now() - startTime,
         timedOut,
+        model,
+        tokens,
+        costUsd,
+        numTurns,
+        toolCalls,
       });
     });
 
