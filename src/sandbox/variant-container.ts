@@ -143,11 +143,13 @@ export function generateDockerfile(
   lines.push('');
 
   // Copy variant-specific configs
+  // Note: CLAUDE.md goes to /app/ not /workspace/ because /workspace is mounted at runtime
+  // The entrypoint will copy it to /workspace/CLAUDE.md before running
   lines.push('# Copy variant-specific configs');
   if (snapshot.claudeMdContent) {
-    lines.push('COPY CLAUDE.md /workspace/CLAUDE.md');
+    lines.push('COPY CLAUDE.md /app/CLAUDE.md');
   }
-  lines.push('COPY settings.json /workspace/.claude/settings.json');
+  lines.push('COPY settings.json /app/settings.json');
   lines.push('COPY claude-config.json /root/.claude.json');
   lines.push('');
 
@@ -291,6 +293,10 @@ function generatePackageJson(): string {
 /**
  * Generate the SDK entrypoint script
  * This runs inside the container and outputs SDK messages as JSON lines
+ *
+ * Note: We read CLAUDE.md from /app/ (baked into container) not /workspace/
+ * because /workspace is mounted from host at runtime and would overwrite
+ * the variant's specific CLAUDE.md.
  */
 function generateEntrypointScript(): string {
   return `/**
@@ -298,6 +304,7 @@ function generateEntrypointScript(): string {
  * Outputs SDK messages as JSON lines for the host to parse
  */
 import { query } from '@anthropic-ai/claude-agent-sdk';
+import { readFileSync, existsSync } from 'fs';
 
 const prompt = process.argv[2];
 
@@ -306,14 +313,28 @@ if (!prompt) {
   process.exit(1);
 }
 
+// Read baked-in CLAUDE.md from /app/ (not /workspace/ which is mounted from host)
+let claudeMdContent = '';
+if (existsSync('/app/CLAUDE.md')) {
+  claudeMdContent = readFileSync('/app/CLAUDE.md', 'utf-8');
+}
+
+// Build system prompt: claude_code preset + variant's CLAUDE.md
+const systemPromptContent = claudeMdContent
+  ? {
+      type: 'custom',
+      content: claudeMdContent + '\\n\\n---\\n\\nYou are Claude Code, an AI assistant that helps with coding tasks.'
+    }
+  : { type: 'preset', preset: 'claude_code' };
+
 const options = {
   cwd: '/workspace',
   // Container is already sandboxed - bypass permission prompts
   permissionMode: 'bypassPermissions',
-  // Use claude_code preset to enable CLAUDE.md reading
-  systemPrompt: { type: 'preset', preset: 'claude_code' },
-  // Use project settings baked into the container
-  settingSources: ['project'],
+  // Use variant's CLAUDE.md if present, otherwise claude_code preset
+  systemPrompt: systemPromptContent,
+  // Don't read from project - we handle CLAUDE.md ourselves
+  settingSources: [],
   // Enable partial messages for streaming
   includePartialMessages: true,
 };
