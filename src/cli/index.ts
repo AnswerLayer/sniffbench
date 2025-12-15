@@ -134,7 +134,6 @@ program
   .option('--run <label>', 'Save results to a named run (enables run tracking)')
   .option('--variant <name>', 'Link run to a registered variant (auto-detects if not provided)')
   .option('--use-variant <name>', 'Run in sandboxed variant container')
-  .option('--variants <names>', 'Run on multiple variants in parallel (comma-separated)')
   .action(interviewCommand);
 
 // Runs command with subcommands

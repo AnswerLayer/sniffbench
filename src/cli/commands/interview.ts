@@ -126,7 +126,6 @@ interface InterviewOptions {
   run?: string;  // Save to named run (enables run tracking)
   variant?: string;  // Link run to a registered variant
   useVariant?: string;  // Run in sandboxed variant container
-  variants?: string;  // Run on multiple variants in parallel (comma-separated)
 }
 
 interface Baseline {
