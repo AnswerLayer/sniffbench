@@ -33,8 +33,10 @@ import {
   loadVariants,
   resolveVariantId,
   getVariant,
-  findMatchingVariant,
+  Variant,
 } from '../../variants';
+import { getActiveVariant } from './variant';
+import { runInVariant, checkDockerAvailable, variantImageExists } from '../../sandbox';
 
 /**
  * Exploration status messages - cycles through these while agent works
@@ -123,6 +125,7 @@ interface InterviewOptions {
   compare?: boolean;
   run?: string;  // Save to named run (enables run tracking)
   variant?: string;  // Link run to a registered variant
+  useVariant?: string;  // Run in sandboxed variant container
 }
 
 interface Baseline {
@@ -364,27 +367,87 @@ function formatAnswer(answer: string, maxLines: number = 30): string {
 }
 
 /**
- * Run agent on a comprehension question
+ * Build the interview prompt for a case
  */
-async function getAgentResponse(
-  caseData: Case,
-  agent: AgentWrapper,
-  cwd: string,
-  onEvent?: (event: AgentEvent) => void
-): Promise<AgentResult> {
-  // Build the prompt for the agent
-  // We frame it as a comprehension question about the codebase
-  const prompt = `You are being evaluated on your understanding of this codebase.
+function buildInterviewPrompt(caseData: Case): string {
+  return `You are being evaluated on your understanding of this codebase.
 
 Please answer the following question by exploring the codebase:
 
 ${caseData.prompt}
 
 Be concise but accurate. Focus on the key points with specific file references where relevant. Aim for a clear, well-organized answer that a developer could quickly scan.`;
+}
 
+/**
+ * Run agent on a comprehension question
+ * If variant is provided, runs in sandboxed container; otherwise runs locally
+ */
+async function getAgentResponse(
+  caseData: Case,
+  agent: AgentWrapper,
+  cwd: string,
+  onEvent?: (event: AgentEvent) => void,
+  variant?: Variant | null
+): Promise<AgentResult> {
+  const prompt = buildInterviewPrompt(caseData);
+  const timeoutMs = (caseData.expectations?.maxTimeSeconds || 300) * 1000;
+
+  // If variant is set, run in sandboxed container
+  if (variant) {
+    const containerResult = await runInVariant(variant, prompt, {
+      projectRoot: cwd,
+      timeoutMs,
+      stream: true,
+      onStreamEvent: (event) => {
+        if (!onEvent) return;
+        if (event.type === 'tool_use' && event.tool) {
+          onEvent({
+            type: 'tool_start',
+            tool: { id: '', name: event.tool.name, input: event.tool.input, timestamp: Date.now() }
+          });
+        } else if (event.type === 'text' && event.text) {
+          onEvent({ type: 'text_delta', text: event.text });
+        } else if (event.type === 'thinking' && event.text) {
+          onEvent({ type: 'thinking', text: event.text });
+        }
+      },
+    });
+
+    // Convert VariantRunResult to AgentResult format
+    // Use metrics captured from SDK result message
+    const toolCalls = (containerResult.toolCalls || []).map((tc, i) => ({
+      id: `tool-${i}`,
+      name: tc.name,
+      input: tc.input,
+      timestamp: Date.now(),
+    }));
+
+    return {
+      success: containerResult.exitCode === 0 && !containerResult.timedOut,
+      answer: containerResult.stdout.trim(),
+      error: containerResult.exitCode !== 0 ? containerResult.stderr || `Exit code: ${containerResult.exitCode}` : undefined,
+      durationMs: containerResult.durationMs,
+      timedOut: containerResult.timedOut,
+      model: containerResult.model || variant.snapshot.model || 'unknown',
+      tokens: containerResult.tokens || {
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        totalTokens: 0,
+      },
+      costUsd: containerResult.costUsd || 0,
+      numTurns: containerResult.numTurns || 1,
+      toolCalls,
+      toolsUsed: [...new Set((containerResult.toolCalls || []).map(tc => tc.name))],
+    };
+  }
+
+  // Local execution
   const result = await agent.run(prompt, {
     cwd,
-    timeoutMs: (caseData.expectations?.maxTimeSeconds || 300) * 1000,
+    timeoutMs,
     onEvent,
   });
 
@@ -400,7 +463,8 @@ async function runInterviewQuestion(
   agent: AgentWrapper,
   rl: readline.Interface,
   store: BaselineStore,
-  projectRoot: string
+  projectRoot: string,
+  activeVariant?: Variant | null
 ): Promise<{ grade: number; skipped: boolean; durationMs?: number; model?: string; rl: readline.Interface }> {
   const existingBaseline = store.baselines[caseData.id];
 
@@ -527,7 +591,7 @@ async function runInterviewQuestion(
         default:
           break;
       }
-    });
+    }, activeVariant);
 
     // Ensure spinner is stopped
     if (!textOutputStarted) {
@@ -613,7 +677,8 @@ async function runComparisonCase(
   caseData: Case,
   agent: AgentWrapper,
   baseline: Baseline,
-  projectRoot: string
+  projectRoot: string,
+  activeVariant?: Variant | null
 ): Promise<ComparisonResult> {
   // Show the question
   console.log(box(caseData.prompt, `Question: ${caseData.title}`));
@@ -677,7 +742,7 @@ async function runComparisonCase(
         default:
           break;
       }
-    });
+    }, activeVariant);
 
     // Ensure spinner is stopped
     if (!textOutputStarted) {
@@ -862,32 +927,64 @@ export async function interviewCommand(options: InterviewOptions) {
   const version = await agent.getVersion();
   spinner.succeed(`${agent.displayName} ${version ? `(${version})` : ''} is ready`);
 
-  // Always initialize run tracking (--run flag just provides optional label)
-  const agentConfig = await capturePartialAgentConfig(agent, projectRoot);
+  // Determine execution mode: sandboxed variant or local
+  const variantStore = loadVariants(projectRoot);
+  let activeVariant: Variant | null = null;
+  const useVariantName = options.useVariant || getActiveVariant(projectRoot);
 
-  // Handle variant linking
-  let variantId: string | undefined;
-  if (options.variant) {
-    // Explicit variant provided
-    const variantStore = loadVariants(projectRoot);
-    const resolvedId = resolveVariantId(variantStore, options.variant);
+  if (useVariantName) {
+    const resolvedId = resolveVariantId(variantStore, useVariantName);
     if (!resolvedId) {
-      console.log(chalk.red(`\n  Variant not found: ${options.variant}`));
+      console.log(chalk.red(`\n  Variant not found: ${useVariantName}`));
       console.log(chalk.dim('  Use `sniff variant list` to see available variants.\n'));
       return;
     }
-    const variant = getVariant(variantStore, resolvedId)!;
-    variantId = variant.id;
-    console.log(chalk.dim(`\n  Using variant: ${variant.name} (${variant.id})`));
-  } else {
-    // Try auto-matching to an existing variant
-    const variantStore = loadVariants(projectRoot);
-    const matchingVariant = findMatchingVariant(variantStore, agentConfig);
-    if (matchingVariant) {
-      variantId = matchingVariant.id;
-      console.log(chalk.dim(`\n  Auto-linked to variant: ${matchingVariant.name}`));
+    activeVariant = getVariant(variantStore, resolvedId) || null;
+
+    if (activeVariant && !activeVariant.container) {
+      console.log(chalk.red(`\n  Variant "${activeVariant.name}" has no container.`));
+      console.log(chalk.dim('  Build it first: sniff variant build ' + activeVariant.name + '\n'));
+      return;
+    }
+
+    if (activeVariant && !variantImageExists(activeVariant)) {
+      console.log(chalk.red(`\n  Container image missing for variant "${activeVariant.name}".`));
+      console.log(chalk.dim('  Rebuild it: sniff variant build ' + activeVariant.name + '\n'));
+      return;
+    }
+
+    // Check Docker is available for sandboxed execution
+    const dockerAvailable = await checkDockerAvailable();
+    if (!dockerAvailable) {
+      console.log(chalk.red('\n  Docker is required for sandboxed variant execution.'));
+      console.log(chalk.dim('  Either install Docker or remove --use-variant flag.\n'));
+      return;
     }
   }
+
+  // Display active variant
+  if (activeVariant) {
+    console.log(chalk.bold(`\n  Using variant: `) + chalk.cyan(activeVariant.name));
+  }
+
+  // Always initialize run tracking (--run flag just provides optional label)
+  const agentConfig = await capturePartialAgentConfig(agent, projectRoot);
+
+  // Handle variant linking (for run metadata) - only when explicitly specified
+  let variantId: string | undefined;
+  if (activeVariant) {
+    // Using sandboxed variant - link to it
+    variantId = activeVariant.id;
+  } else if (options.variant) {
+    // Explicit variant link provided (but running locally)
+    const resolvedId = resolveVariantId(variantStore, options.variant);
+    if (resolvedId) {
+      const variant = getVariant(variantStore, resolvedId)!;
+      variantId = variant.id;
+      console.log(chalk.dim(`  Linked to variant: ${variant.name}`));
+    }
+  }
+  // No auto-linking - only link when explicitly specified
 
   // Add variantId to agent config if linked
   if (variantId) {
@@ -986,7 +1083,7 @@ export async function interviewCommand(options: InterviewOptions) {
         console.log(chalk.bold(`\n  [${i + 1}/${casesToRun.length}] ${caseData.title}`));
         console.log(chalk.dim(`  Difficulty: ${caseData.difficulty}\n`));
 
-        const result = await runComparisonCase(caseData, agent, baseline, projectRoot);
+        const result = await runComparisonCase(caseData, agent, baseline, projectRoot, activeVariant);
         comparisonResults.push(result);
 
         if (i < casesToRun.length - 1) {
@@ -1013,7 +1110,7 @@ export async function interviewCommand(options: InterviewOptions) {
         console.log(chalk.bold(`\n  [${i + 1}/${casesToRun.length}] ${caseData.title}`));
         console.log(chalk.dim(`  Difficulty: ${caseData.difficulty}\n`));
 
-        const result = await runInterviewQuestion(caseData, agent, rl, store, projectRoot);
+        const result = await runInterviewQuestion(caseData, agent, rl, store, projectRoot, activeVariant);
         // Update rl in case it was recreated after agent run
         rl = result.rl;
         results.push({

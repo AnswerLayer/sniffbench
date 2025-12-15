@@ -35,6 +35,27 @@ export interface McpServerConfig {
 }
 
 /**
+ * Full MCP server configuration for container building
+ * Includes everything needed to install and configure the server
+ */
+export interface FullMcpServerConfig {
+  /** Server type */
+  type: 'stdio' | 'sse' | 'http';
+  /** For stdio - the command to run */
+  command?: string;
+  /** For stdio - command arguments */
+  args?: string[];
+  /** For stdio - npm package name to install (e.g., "@anthropic-ai/mcp-server-linear") */
+  npmPackage?: string;
+  /** For sse/http - the server URL */
+  url?: string;
+  /** For sse/http - request headers (keys only, values are env var names) */
+  headers?: Record<string, string>;
+  /** Environment variables required at runtime (names only, not values) */
+  requiredEnvVars?: string[];
+}
+
+/**
  * Agent configuration captured at run time
  */
 export interface AgentConfig {

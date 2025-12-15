@@ -6,7 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { AgentConfig } from '../runs/types';
-import { Variant, VariantStore, RegisterVariantOptions } from './types';
+import { Variant, VariantStore, RegisterVariantOptions, SandboxableSnapshot } from './types';
 
 /** Current schema version */
 export const VARIANT_STORE_VERSION = '1.0';
@@ -145,7 +145,7 @@ export function findMatchingVariant(store: VariantStore, config: AgentConfig): V
  */
 export function registerVariant(
   store: VariantStore,
-  snapshot: AgentConfig,
+  snapshot: SandboxableSnapshot,
   options: RegisterVariantOptions
 ): Variant {
   const variant: Variant = {

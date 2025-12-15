@@ -2,10 +2,36 @@
  * Variant types for sniffbench
  *
  * Supports explicit variant registration for scientific comparison
- * between different agent configurations.
+ * between different agent configurations, with container-based sandboxing
+ * for true parallel A/B testing.
  */
 
-import type { AgentConfig } from '../runs/types';
+import type { AgentConfig, FullMcpServerConfig } from '../runs/types';
+
+/**
+ * Container metadata populated after image build
+ */
+export interface ContainerInfo {
+  /** Docker image name: "sniffbench-variant-{name}" */
+  imageName: string;
+  /** Image tag: "v1" or content-based hash */
+  imageTag: string;
+  /** ISO timestamp when container was built */
+  builtAt: string;
+  /** Claude Code version installed in container */
+  claudeVersion: string;
+}
+
+/**
+ * Extended snapshot with full configuration for container building
+ * Includes everything needed to reproduce the exact agent environment
+ */
+export interface SandboxableSnapshot extends AgentConfig {
+  /** Full MCP server configurations (for container building) */
+  mcpServersFull?: Record<string, FullMcpServerConfig>;
+  /** Full CLAUDE.md content (for baking into container) */
+  claudeMdContent?: string;
+}
 
 /**
  * A registered variant - a named configuration snapshot
@@ -23,8 +49,11 @@ export interface Variant {
   /** User-declared changes (explicit documentation of what's different) */
   changes?: string[];
 
-  /** Ambient snapshot at registration time */
-  snapshot: AgentConfig;
+  /** Configuration snapshot (extended with full MCP config for container building) */
+  snapshot: SandboxableSnapshot;
+
+  /** Container info (populated after image build) */
+  container?: ContainerInfo;
 
   /** Flexible metadata for future extensibility */
   metadata?: Record<string, unknown>;
