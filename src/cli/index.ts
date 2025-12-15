@@ -188,7 +188,7 @@ variantCmd
   .description('Show details of a specific variant')
   .argument('<name>', 'Variant ID or name')
   .option('--json', 'Output as JSON')
-  .action((id, opts) => variantShowCommand({ id, ...opts }));
+  .action((name, opts) => variantShowCommand({ id: name, ...opts }));
 
 variantCmd
   .command('build')
