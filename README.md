@@ -105,22 +105,31 @@ sniff runs show baseline             # Show by label
 sniff runs delete <id>               # Delete a run
 ```
 
-### Variants
+### Variant (singular) - operate on ONE
 
 ```bash
 sniff variant register <name>        # Register current config as variant
 sniff variant register <name> --build # Register and build container image
-sniff variant list                   # List all variants
 sniff variant show <name>            # Show variant details
-sniff variant diff <v1> <v2>         # Compare two variants (config only)
-sniff variant delete <name>          # Delete a variant
-
-# Sandboxed execution (requires Docker)
 sniff variant build <name>           # Build container image for variant
 sniff variant prune <name>           # Remove container image
+sniff variant delete <name>          # Delete a variant
 sniff variant use <name>             # Activate variant for subsequent runs
 sniff variant unuse                  # Deactivate current variant
 sniff variant active                 # Show currently active variant
+sniff variant                        # (default: show active)
+```
+
+### Variants (plural) - operate on MANY
+
+```bash
+sniff variants list                  # List all variants
+sniff variants diff <v1> <v2>        # Compare two variants (config only)
+sniff variants build                 # Build all variant containers
+sniff variants build --filter osgrep # Build variants matching pattern
+sniff variants prune                 # Remove all container images
+sniff variants clean                 # Delete stale variants
+sniff variants                       # (default: list all)
 ```
 
 ### Cases

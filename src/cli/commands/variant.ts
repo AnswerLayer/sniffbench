@@ -196,7 +196,7 @@ export async function variantShowCommand(options: { id: string; json?: boolean }
   const variantId = resolveVariantId(store, options.id);
   if (!variantId) {
     console.log(chalk.red(`\n  Variant not found: ${options.id}`));
-    console.log(chalk.dim('  Use `sniff variant list` to see available variants.\n'));
+    console.log(chalk.dim('  Use `sniff variants list` to see available variants.\n'));
     return;
   }
 
@@ -278,13 +278,13 @@ export async function variantDiffCommand(id1: string, id2: string, options: { js
 
   if (!variantId1) {
     console.log(chalk.red(`\n  Variant not found: ${id1}`));
-    console.log(chalk.dim('  Use `sniff variant list` to see available variants.\n'));
+    console.log(chalk.dim('  Use `sniff variants list` to see available variants.\n'));
     return;
   }
 
   if (!variantId2) {
     console.log(chalk.red(`\n  Variant not found: ${id2}`));
-    console.log(chalk.dim('  Use `sniff variant list` to see available variants.\n'));
+    console.log(chalk.dim('  Use `sniff variants list` to see available variants.\n'));
     return;
   }
 
@@ -358,7 +358,7 @@ export async function variantDeleteCommand(options: { id: string; force?: boolea
   const variantId = resolveVariantId(store, options.id);
   if (!variantId) {
     console.log(chalk.red(`\n  Variant not found: ${options.id}`));
-    console.log(chalk.dim('  Use `sniff variant list` to see available variants.\n'));
+    console.log(chalk.dim('  Use `sniff variants list` to see available variants.\n'));
     return;
   }
 
@@ -424,7 +424,7 @@ export async function variantBuildCommand(
   const variantId = resolveVariantId(store, idOrName);
   if (!variantId) {
     console.log(chalk.red(`\n  Variant not found: ${idOrName}`));
-    console.log(chalk.dim('  Use `sniff variant list` to see available variants.\n'));
+    console.log(chalk.dim('  Use `sniff variants list` to see available variants.\n'));
     return;
   }
 
@@ -500,7 +500,7 @@ export async function variantPruneCommand(
   const variantId = resolveVariantId(store, idOrName);
   if (!variantId) {
     console.log(chalk.red(`\n  Variant not found: ${idOrName}`));
-    console.log(chalk.dim('  Use `sniff variant list` to see available variants.\n'));
+    console.log(chalk.dim('  Use `sniff variants list` to see available variants.\n'));
     return;
   }
 
@@ -567,7 +567,7 @@ export async function variantUseCommand(idOrName: string): Promise<void> {
   const variantId = resolveVariantId(store, idOrName);
   if (!variantId) {
     console.log(chalk.red(`\n  Variant not found: ${idOrName}`));
-    console.log(chalk.dim('  Use `sniff variant list` to see available variants.\n'));
+    console.log(chalk.dim('  Use `sniff variants list` to see available variants.\n'));
     return;
   }
 
@@ -682,4 +682,222 @@ export function getActiveVariant(projectRoot: string): string | null {
   }
 
   return null;
+}
+
+// ============================================================================
+// Plural commands (operate on MANY variants)
+// ============================================================================
+
+/**
+ * Build all variants (or filtered subset)
+ */
+export async function variantsBuildCommand(options: {
+  filter?: string;
+  verbose?: boolean;
+  claudeVersion?: string;
+}): Promise<void> {
+  const projectRoot = process.cwd();
+  const store = loadVariants(projectRoot);
+  const allVariants = listVariants(store);
+
+  if (allVariants.length === 0) {
+    console.log(chalk.dim('\n  No variants registered.\n'));
+    return;
+  }
+
+  // Filter variants if specified
+  let variants = allVariants;
+  if (options.filter) {
+    const filterLower = options.filter.toLowerCase();
+    variants = allVariants.filter(v =>
+      v.name.toLowerCase().includes(filterLower) ||
+      (v.description?.toLowerCase().includes(filterLower))
+    );
+  }
+
+  if (variants.length === 0) {
+    console.log(chalk.yellow(`\n  No variants match filter: ${options.filter}\n`));
+    return;
+  }
+
+  // Check Docker availability
+  const dockerAvailable = await checkDockerAvailable();
+  if (!dockerAvailable) {
+    console.log(chalk.red('\n  Docker is not available.'));
+    console.log(chalk.dim('  Please install Docker and ensure it is running.\n'));
+    return;
+  }
+
+  console.log(chalk.bold(`\n  Building ${variants.length} variant(s)...\n`));
+
+  let built = 0;
+  let failed = 0;
+
+  for (const variant of variants) {
+    process.stdout.write(`  ${variant.name}: `);
+
+    try {
+      // Get Claude version (same logic as singular variantBuildCommand)
+      const rawVersion = options.claudeVersion
+        || variant.snapshot.version
+        || getHostClaudeVersion();
+      const claudeVersion = rawVersion?.match(/(\d+\.\d+\.\d+)/)?.[1];
+
+      if (!claudeVersion) {
+        console.log(chalk.red(`✗ Could not determine Claude Code version`));
+        console.log(chalk.dim(`    Use --claude-version to specify manually`));
+        failed++;
+        continue;
+      }
+
+      const result = await buildVariantImage({
+        variant,
+        projectRoot,
+        claudeVersion,
+        verbose: options.verbose,
+      });
+
+      // Update variant with container info and persist
+      variant.container = result.containerInfo;
+      saveVariants(projectRoot, store);
+
+      console.log(chalk.green(`✓ Built (${result.imageName}:${result.imageTag})`));
+      built++;
+    } catch (err) {
+      console.log(chalk.red(`✗ Failed: ${(err as Error).message}`));
+      failed++;
+    }
+  }
+
+  console.log(chalk.bold(`\n  Summary: ${built} built, ${failed} failed\n`));
+}
+
+/**
+ * Prune all variant container images
+ */
+export async function variantsPruneCommand(options: { force?: boolean }): Promise<void> {
+  const projectRoot = process.cwd();
+  const store = loadVariants(projectRoot);
+  const allVariants = listVariants(store);
+
+  // Filter to only variants with containers
+  const variantsWithContainers = allVariants.filter(v => v.container);
+
+  if (variantsWithContainers.length === 0) {
+    console.log(chalk.dim('\n  No variant containers to prune.\n'));
+    return;
+  }
+
+  // Confirm unless --force
+  if (!options.force) {
+    const readline = await import('readline');
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+
+    console.log(chalk.yellow(`\n  This will remove ${variantsWithContainers.length} container image(s):`));
+    for (const v of variantsWithContainers) {
+      console.log(chalk.dim(`    - ${v.name}: ${v.container!.imageName}:${v.container!.imageTag}`));
+    }
+
+    const answer = await new Promise<string>((resolve) => {
+      rl.question(chalk.yellow(`\n  Continue? (y/N): `), resolve);
+    });
+    rl.close();
+
+    if (answer.toLowerCase() !== 'y') {
+      console.log(chalk.dim('\n  Cancelled.\n'));
+      return;
+    }
+  }
+
+  console.log(chalk.bold(`\n  Pruning ${variantsWithContainers.length} container(s)...\n`));
+
+  let pruned = 0;
+  let failed = 0;
+
+  for (const variant of variantsWithContainers) {
+    process.stdout.write(`  ${variant.name}: `);
+
+    try {
+      const removed = pruneVariantImage(variant);
+      if (removed) {
+        // Clear container info
+        variant.container = undefined;
+        console.log(chalk.green('✓ Pruned'));
+        pruned++;
+      } else {
+        variant.container = undefined;
+        console.log(chalk.yellow('⚠ Already removed'));
+        pruned++;
+      }
+    } catch (err) {
+      console.log(chalk.red(`✗ Failed: ${(err as Error).message}`));
+      failed++;
+    }
+  }
+
+  // Save updated store
+  saveVariants(projectRoot, store);
+
+  console.log(chalk.bold(`\n  Summary: ${pruned} pruned, ${failed} failed\n`));
+}
+
+/**
+ * Clean up stale variants (no container, or orphaned)
+ */
+export async function variantsCleanCommand(options: { force?: boolean }): Promise<void> {
+  const projectRoot = process.cwd();
+  const store = loadVariants(projectRoot);
+  const allVariants = listVariants(store);
+
+  // Find variants without containers (never built or pruned)
+  const unbuiltVariants = allVariants.filter(v => !v.container);
+
+  // Find variants with missing container images
+  const missingImageVariants = allVariants.filter(v =>
+    v.container && !variantImageExists(v)
+  );
+
+  const staleVariants = [...new Set([...unbuiltVariants, ...missingImageVariants])];
+
+  if (staleVariants.length === 0) {
+    console.log(chalk.green('\n  ✓ No stale variants found.\n'));
+    return;
+  }
+
+  console.log(chalk.yellow(`\n  Found ${staleVariants.length} stale variant(s):\n`));
+  for (const v of staleVariants) {
+    const reason = !v.container ? 'never built' : 'image missing';
+    console.log(chalk.dim(`    - ${v.name} (${reason})`));
+  }
+
+  // Confirm unless --force
+  if (!options.force) {
+    const readline = await import('readline');
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+
+    const answer = await new Promise<string>((resolve) => {
+      rl.question(chalk.yellow(`\n  Delete these variants? (y/N): `), resolve);
+    });
+    rl.close();
+
+    if (answer.toLowerCase() !== 'y') {
+      console.log(chalk.dim('\n  Cancelled.\n'));
+      return;
+    }
+  }
+
+  let deleted = 0;
+  for (const variant of staleVariants) {
+    deleteVariant(store, variant.id);
+    deleted++;
+  }
+
+  saveVariants(projectRoot, store);
+  console.log(chalk.green(`\n  ✓ Deleted ${deleted} stale variant(s).\n`));
 }

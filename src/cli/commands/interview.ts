@@ -936,7 +936,7 @@ export async function interviewCommand(options: InterviewOptions) {
     const resolvedId = resolveVariantId(variantStore, useVariantName);
     if (!resolvedId) {
       console.log(chalk.red(`\n  Variant not found: ${useVariantName}`));
-      console.log(chalk.dim('  Use `sniff variant list` to see available variants.\n'));
+      console.log(chalk.dim('  Use `sniff variants list` to see available variants.\n'));
       return;
     }
     activeVariant = getVariant(variantStore, resolvedId) || null;
