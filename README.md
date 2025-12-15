@@ -93,6 +93,7 @@ sniff interview --run "baseline"     # Run with a labeled run
 sniff interview --cases comp-001     # Run specific case(s)
 sniff interview --variant control    # Link run to specific variant
 sniff interview --compare            # Compare against existing baselines
+sniff interview --use-variant control # Run in sandboxed variant container
 ```
 
 ### Runs
@@ -108,10 +109,18 @@ sniff runs delete <id>               # Delete a run
 
 ```bash
 sniff variant register <name>        # Register current config as variant
+sniff variant register <name> --build # Register and build container image
 sniff variant list                   # List all variants
 sniff variant show <name>            # Show variant details
 sniff variant diff <v1> <v2>         # Compare two variants (config only)
 sniff variant delete <name>          # Delete a variant
+
+# Sandboxed execution (requires Docker)
+sniff variant build <name>           # Build container image for variant
+sniff variant prune <name>           # Remove container image
+sniff variant use <name>             # Activate variant for subsequent runs
+sniff variant unuse                  # Deactivate current variant
+sniff variant active                 # Show currently active variant
 ```
 
 ### Cases
@@ -174,7 +183,36 @@ Without variants, you're comparing runs but don't know *why* one performed diffe
 2. **Auto-link runs**: Runs automatically link to matching variants
 3. **Compare configs**: See exactly what's different between setups
 
-### Workflow Example
+### Sandboxed Variant Execution
+
+For true isolation, variants can be packaged as Docker containers with your configuration baked in:
+
+```bash
+# Register and build a container image
+sniff variant register "control" -d "Stock config" --build
+
+# Make changes to CLAUDE.md, add MCP servers, etc...
+
+# Register the treatment variant
+sniff variant register "with-osgrep" -d "Added semantic search" --build
+
+# Run interview in sandboxed container
+sniff interview --use-variant control
+sniff interview --use-variant with-osgrep
+
+# Compare the runs
+sniff compare <control-run> <osgrep-run>
+```
+
+Each container includes:
+- Claude Code (same version as your host)
+- Your CLAUDE.md baked in
+- Tool permissions configured
+- Complete isolation from host config
+
+**Requirements:** Docker must be installed for sandboxed execution.
+
+### Workflow Example (Without Containers)
 
 ```bash
 # 1. Register your baseline config

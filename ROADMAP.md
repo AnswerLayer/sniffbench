@@ -10,6 +10,21 @@ This roadmap breaks down the work into phases. Everything is available to work o
 
 ---
 
+## Recently Completed
+
+### ✅ Variant Sandboxing (ANS-459)
+
+Docker container-based variant isolation for A/B testing agent configurations.
+
+**Implemented:**
+- `sniff variant register --build` - Package config as Docker image
+- `sniff variant build/prune` - Manage container images
+- `sniff interview --use-variant` - Run in sandboxed container
+- SDK-based execution with full metrics capture
+- CLAUDE.md isolation (baked into container, not overwritten by host mount)
+
+---
+
 ## Phase 1: Foundation
 
 Build the core infrastructure that everything else depends on.
