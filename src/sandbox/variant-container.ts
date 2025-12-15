@@ -8,7 +8,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { execSync, spawn } from 'child_process';
+import { execSync, spawn, spawnSync } from 'child_process';
 import type { Variant, ContainerInfo, SandboxableSnapshot } from '../variants/types';
 import type { FullMcpServerConfig } from '../runs/types';
 
@@ -17,6 +17,23 @@ const BASE_IMAGE = 'node:20-slim';
 
 /** Directory for build contexts */
 const BUILD_DIR = '.sniffbench/builds';
+
+/**
+ * Validate Docker image name follows Docker naming rules
+ * Image names: lowercase letters, digits, separators (., _, -)
+ * Tags: alphanumeric, separators (., _, -)
+ */
+const DOCKER_IMAGE_NAME_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
+const DOCKER_TAG_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
+
+function validateDockerImageRef(imageName: string, imageTag: string): void {
+  if (!DOCKER_IMAGE_NAME_PATTERN.test(imageName)) {
+    throw new Error(`Invalid Docker image name: ${imageName}. Must be lowercase alphanumeric with ._- separators.`);
+  }
+  if (!DOCKER_TAG_PATTERN.test(imageTag)) {
+    throw new Error(`Invalid Docker image tag: ${imageTag}. Must be alphanumeric with ._- separators.`);
+  }
+}
 
 export interface BuildOptions {
   /** The variant to build */
@@ -499,13 +516,18 @@ export function variantImageExists(variant: Variant): boolean {
     return false;
   }
 
+  const { imageName, imageTag } = variant.container;
+
+  // Validate image name/tag to prevent command injection
   try {
-    const fullName = `${variant.container.imageName}:${variant.container.imageTag}`;
-    execSync(`docker image inspect ${fullName}`, { stdio: 'pipe' });
-    return true;
+    validateDockerImageRef(imageName, imageTag);
   } catch {
     return false;
   }
+
+  const fullName = `${imageName}:${imageTag}`;
+  const result = spawnSync('docker', ['image', 'inspect', fullName], { stdio: 'pipe' });
+  return result.status === 0;
 }
 
 /**
@@ -516,13 +538,14 @@ export function pruneVariantImage(variant: Variant): boolean {
     return false;
   }
 
-  try {
-    const fullName = `${variant.container.imageName}:${variant.container.imageTag}`;
-    execSync(`docker rmi ${fullName}`, { stdio: 'pipe' });
-    return true;
-  } catch {
-    return false;
-  }
+  const { imageName, imageTag } = variant.container;
+
+  // Validate image name/tag to prevent command injection
+  validateDockerImageRef(imageName, imageTag);
+
+  const fullName = `${imageName}:${imageTag}`;
+  const result = spawnSync('docker', ['rmi', fullName], { stdio: 'pipe' });
+  return result.status === 0;
 }
 
 /**
