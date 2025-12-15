@@ -210,7 +210,7 @@ variantCmd
   .description('Delete a variant')
   .argument('<name>', 'Variant ID or name')
   .option('-f, --force', 'Skip confirmation')
-  .action((id, opts) => variantDeleteCommand({ id, ...opts }));
+  .action((name, opts) => variantDeleteCommand({ id: name, ...opts }));
 
 variantCmd
   .command('use')
