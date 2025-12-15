@@ -32,6 +32,9 @@ import {
   variantUseCommand,
   variantUnuseCommand,
   variantActiveCommand,
+  variantsBuildCommand,
+  variantsPruneCommand,
+  variantsCleanCommand,
 } from './commands/variant';
 
 const program = new Command();
@@ -164,10 +167,10 @@ runsCmd
 // Default to list if no subcommand
 runsCmd.action(() => runsListCommand({}));
 
-// Variant command with subcommands
+// Variant command (singular) - operate on ONE variant
 const variantCmd = program
   .command('variant')
-  .description('Manage registered agent configuration variants');
+  .description('Operate on a single variant');
 
 variantCmd
   .command('register')
@@ -181,32 +184,11 @@ variantCmd
   .action((name, opts) => variantRegisterCommand(name, opts));
 
 variantCmd
-  .command('list')
-  .description('List all registered variants')
-  .option('--json', 'Output as JSON')
-  .action(variantListCommand);
-
-variantCmd
   .command('show')
   .description('Show details of a specific variant')
-  .argument('<id>', 'Variant ID or name')
+  .argument('<name>', 'Variant ID or name')
   .option('--json', 'Output as JSON')
   .action((id, opts) => variantShowCommand({ id, ...opts }));
-
-variantCmd
-  .command('diff')
-  .description('Compare configuration between two variants')
-  .argument('<variant1>', 'First variant ID or name')
-  .argument('<variant2>', 'Second variant ID or name')
-  .option('--json', 'Output as JSON')
-  .action((id1, id2, opts) => variantDiffCommand(id1, id2, opts));
-
-variantCmd
-  .command('delete')
-  .description('Delete a variant')
-  .argument('<id>', 'Variant ID or name')
-  .option('-f, --force', 'Skip confirmation')
-  .action((id, opts) => variantDeleteCommand({ id, ...opts }));
 
 variantCmd
   .command('build')
@@ -224,6 +206,13 @@ variantCmd
   .action((name, opts) => variantPruneCommand(name, opts));
 
 variantCmd
+  .command('delete')
+  .description('Delete a variant')
+  .argument('<name>', 'Variant ID or name')
+  .option('-f, --force', 'Skip confirmation')
+  .action((id, opts) => variantDeleteCommand({ id, ...opts }));
+
+variantCmd
   .command('use')
   .description('Activate a variant for subsequent interviews')
   .argument('<name>', 'Variant ID or name')
@@ -239,7 +228,49 @@ variantCmd
   .description('Show the currently active variant')
   .action(() => variantActiveCommand());
 
-// Default to list if no subcommand
-variantCmd.action(() => variantListCommand({}));
+// Default: show active variant
+variantCmd.action(() => variantActiveCommand());
+
+// Variants command (plural) - operate on MANY variants
+const variantsCmd = program
+  .command('variants')
+  .description('List, compare, and bulk-manage variants');
+
+variantsCmd
+  .command('list')
+  .description('List all registered variants')
+  .option('--json', 'Output as JSON')
+  .action(variantListCommand);
+
+variantsCmd
+  .command('diff')
+  .description('Compare configuration between two variants')
+  .argument('<variant1>', 'First variant ID or name')
+  .argument('<variant2>', 'Second variant ID or name')
+  .option('--json', 'Output as JSON')
+  .action((id1, id2, opts) => variantDiffCommand(id1, id2, opts));
+
+variantsCmd
+  .command('build')
+  .description('Build container images for all variants')
+  .option('--filter <pattern>', 'Only build variants matching pattern')
+  .option('-v, --verbose', 'Show detailed build output')
+  .option('--claude-version <version>', 'Claude Code version to install')
+  .action((opts) => variantsBuildCommand(opts));
+
+variantsCmd
+  .command('prune')
+  .description('Remove all variant container images')
+  .option('-f, --force', 'Skip confirmation')
+  .action((opts) => variantsPruneCommand(opts));
+
+variantsCmd
+  .command('clean')
+  .description('Delete stale variants (never built or image missing)')
+  .option('-f, --force', 'Skip confirmation')
+  .action((opts) => variantsCleanCommand(opts));
+
+// Default: list all variants
+variantsCmd.action(() => variantListCommand({}));
 
 program.parse();
