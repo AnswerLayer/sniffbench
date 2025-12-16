@@ -71,8 +71,8 @@ export async function scanForClosedIssues(options: ScanOptions): Promise<ScanRes
     includeAll = false,
   } = options;
 
-  // Get repository info
-  const repoInfo = getRepoInfo(repoPath);
+  // Get repository info - support both local paths and GitHub URLs
+  const repoInfo = parseRepoInput(repoPath);
   if (!repoInfo) {
     throw new Error(`Could not determine repository info from ${repoPath}`);
   }
@@ -179,6 +179,28 @@ export function extractLinkedIssue(prBody: string, branchName: string): number |
 interface RepoInfo {
   owner: string;
   name: string;
+}
+
+/**
+ * Parse repo input - handles local paths, GitHub URLs, and owner/repo format
+ */
+function parseRepoInput(input: string): RepoInfo | null {
+  // GitHub URL: https://github.com/owner/repo or git@github.com:owner/repo
+  const httpsMatch = input.match(/github\.com\/([^/]+)\/([^/.]+)/);
+  const sshMatch = input.match(/github\.com:([^/]+)\/([^/.]+)/);
+  const urlMatch = httpsMatch || sshMatch;
+  if (urlMatch) {
+    return { owner: urlMatch[1], name: urlMatch[2].replace(/\.git$/, '') };
+  }
+
+  // owner/repo format
+  const shortMatch = input.match(/^([^/]+)\/([^/]+)$/);
+  if (shortMatch && !input.startsWith('/') && !input.startsWith('.')) {
+    return { owner: shortMatch[1], name: shortMatch[2] };
+  }
+
+  // Local path - use git remote
+  return getRepoInfo(input);
 }
 
 /**
