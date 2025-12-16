@@ -36,6 +36,12 @@ import {
   variantsPruneCommand,
   variantsCleanCommand,
 } from './commands/variant';
+import {
+  closedIssuesScanCommand,
+  closedIssuesAddCommand,
+  closedIssuesListCommand,
+  closedIssuesRunCommand,
+} from './commands/closed-issues';
 
 const program = new Command();
 
@@ -272,5 +278,48 @@ variantsCmd
 
 // Default: list all variants
 variantsCmd.action(() => variantListCommand({}));
+
+// Closed Issues command - evaluate agents using real closed issues
+const closedIssuesCmd = program
+  .command('closed-issues')
+  .description('Evaluate agents using real closed issues from repositories');
+
+closedIssuesCmd
+  .command('scan')
+  .description('Scan repository for closed issues suitable for evaluation')
+  .argument('[repo-path]', 'Path to repository', '.')
+  .option('-n, --max-issues <n>', 'Maximum issues to return', '50')
+  .option('--max-pr-size <lines>', 'Maximum PR size in lines', '500')
+  .option('--max-files <n>', 'Maximum files changed', '10')
+  .option('--since <date>', 'Only issues merged after this date (YYYY-MM-DD)')
+  .option('--require-tests', 'Only include issues with test changes')
+  .option('--all', 'Show all issues including excluded ones')
+  .option('--json', 'Output as JSON')
+  .action((repoPath, opts) => closedIssuesScanCommand(repoPath, opts));
+
+closedIssuesCmd
+  .command('add')
+  .description('Add a specific closed issue as a test case')
+  .argument('<issue>', 'Issue reference (owner/repo#123 or #123)')
+  .option('-r, --repo <path>', 'Path to repository clone')
+  .action((issueRef, opts) => closedIssuesAddCommand(issueRef, opts));
+
+closedIssuesCmd
+  .command('list')
+  .description('List all extracted closed-issue cases')
+  .option('--json', 'Output as JSON')
+  .action(closedIssuesListCommand);
+
+closedIssuesCmd
+  .command('run')
+  .description('Run agent on closed-issue cases')
+  .option('-c, --case <id>', 'Specific case ID to run')
+  .option('--agent <name>', 'Agent to evaluate', 'claude-code')
+  .option('--variant <name>', 'Use a specific variant')
+  .option('-o, --output <dir>', 'Output directory')
+  .action(closedIssuesRunCommand);
+
+// Default: list closed-issue cases
+closedIssuesCmd.action(() => closedIssuesListCommand({}));
 
 program.parse();

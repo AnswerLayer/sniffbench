@@ -66,9 +66,9 @@ export function validateCase(data: unknown, filePath: string): ValidationResult 
   }
 
   if (!obj.source || typeof obj.source !== 'string') {
-    errors.push(new CaseValidationError(filePath, 'source', 'Required field, must be one of: bootstrap, generated, manual, imported'));
-  } else if (!['bootstrap', 'generated', 'manual', 'imported'].includes(obj.source)) {
-    errors.push(new CaseValidationError(filePath, 'source', `Invalid value "${obj.source}", must be one of: bootstrap, generated, manual, imported`));
+    errors.push(new CaseValidationError(filePath, 'source', 'Required field, must be one of: bootstrap, generated, manual, imported, closed_issue'));
+  } else if (!['bootstrap', 'generated', 'manual', 'imported', 'closed_issue'].includes(obj.source)) {
+    errors.push(new CaseValidationError(filePath, 'source', `Invalid value "${obj.source}", must be one of: bootstrap, generated, manual, imported, closed_issue`));
   }
 
   if (!obj.language || typeof obj.language !== 'string') {
