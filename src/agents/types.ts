@@ -223,6 +223,8 @@ export interface BehaviorMetrics {
   readCount: number;
   /** Raw input tokens (non-cached) */
   inputTokens: number;
+  /** Raw output tokens */
+  outputTokens: number;
   /** Raw cache read tokens */
   cacheReadTokens: number;
   /** Raw cache write tokens */
