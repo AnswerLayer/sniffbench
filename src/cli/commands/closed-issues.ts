@@ -188,6 +188,8 @@ export async function closedIssuesScanCommand(
           addSpinner.text = `Adding cases... (${added}/${eligibleResults.length})`;
         } catch (err) {
           failed++;
+          const errMsg = err instanceof Error ? err.message : String(err);
+          console.error(chalk.red(`\n  Failed to extract ${issueRef}: ${errMsg}`));
           // Continue with other issues even if one fails
         }
       }
