@@ -24,6 +24,10 @@ export interface RunOptions {
   projectRoot: string;
   /** Environment variables to pass (secrets) */
   env?: Record<string, string>;
+  /** Directory to load env vars from (defaults to projectRoot) */
+  envSourceDir?: string;
+  /** Skip env var checking (use when env vars are pre-loaded) */
+  skipEnvCheck?: boolean;
   /** Timeout in milliseconds */
   timeoutMs?: number;
   /** Whether to stream output */
@@ -78,23 +82,30 @@ export async function runInVariant(
     throw new Error(`Variant "${variant.name}" has no container image. Run "sniff variant build ${variant.name}" first.`);
   }
 
-  const { projectRoot, env = {}, timeoutMs = DEFAULT_TIMEOUT_MS, stream, onOutput, onStreamEvent } = options;
+  const { projectRoot, env = {}, envSourceDir, skipEnvCheck, timeoutMs = DEFAULT_TIMEOUT_MS, stream, onOutput, onStreamEvent } = options;
 
-  // Collect required env vars and check availability (from process.env and .sniffbench/.env)
-  const requiredEnvVars = collectRequiredEnvVars(variant.snapshot);
-  const envCheck = checkMissingEnvVars(requiredEnvVars, projectRoot);
+  // Use envSourceDir for loading env vars (defaults to projectRoot)
+  const envDir = envSourceDir || projectRoot;
 
-  if (envCheck.missing.length > 0) {
-    const envFilePath = getEnvFilePath(projectRoot);
-    throw new Error(
-      `Missing required environment variables: ${envCheck.missing.join(', ')}\n\n` +
-      `Add them to ${envFilePath} or export them in your shell:\n` +
-      envCheck.missing.map(v => `  ${v}=your-value-here`).join('\n')
-    );
+  // Collect required env vars and check availability (from process.env and envDir/.sniffbench/.env)
+  // Skip if env vars are pre-loaded
+  let resolvedEnv: Record<string, string> = {};
+  if (!skipEnvCheck) {
+    const requiredEnvVars = collectRequiredEnvVars(variant.snapshot);
+    const envCheck = checkMissingEnvVars(requiredEnvVars, envDir);
+
+    if (envCheck.missing.length > 0) {
+      const envFilePath = getEnvFilePath(envDir);
+      throw new Error(
+        `Missing required environment variables: ${envCheck.missing.join(', ')}\n\n` +
+        `Add them to ${envFilePath} or export them in your shell:\n` +
+        envCheck.missing.map(v => `  ${v}=your-value-here`).join('\n')
+      );
+    }
+
+    // Get all env var values (merging process.env and envDir/.sniffbench/.env)
+    resolvedEnv = getEnvVars(requiredEnvVars, envDir);
   }
-
-  // Get all env var values (merging process.env and .sniffbench/.env)
-  const resolvedEnv = getEnvVars(requiredEnvVars, projectRoot);
 
   // Build docker run arguments
   const fullImageName = `${variant.container.imageName}:${variant.container.imageTag}`;

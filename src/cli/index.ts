@@ -41,6 +41,7 @@ import {
   closedIssuesAddCommand,
   closedIssuesListCommand,
   closedIssuesRunCommand,
+  closedIssuesCompareCommand,
 } from './commands/closed-issues';
 
 const program = new Command();
@@ -312,12 +313,23 @@ closedIssuesCmd
 
 closedIssuesCmd
   .command('run')
-  .description('Run agent on closed-issue cases')
+  .description('Run agent on closed-issue cases and compare to reference solutions')
   .option('-c, --case <id>', 'Specific case ID to run')
-  .option('--agent <name>', 'Agent to evaluate', 'claude-code')
-  .option('--variant <name>', 'Use a specific variant')
-  .option('-o, --output <dir>', 'Output directory')
+  .option('--variant <name>', 'Use a specific variant container (default: active variant)')
+  .option('--local', 'Run with local claude command instead of variant container')
+  .option('-t, --timeout <seconds>', 'Timeout per case in seconds', '600')
+  .option('--stream', 'Stream agent output in real-time')
+  .option('--json', 'Output results as JSON')
+  .option('--run <label>', 'Save results with a label for easy reference')
   .action(closedIssuesRunCommand);
+
+closedIssuesCmd
+  .command('compare')
+  .description('Compare two closed-issues runs')
+  .argument('<run1>', 'First run ID or label')
+  .argument('<run2>', 'Second run ID or label')
+  .option('--json', 'Output as JSON')
+  .action((run1, run2, opts) => closedIssuesCompareCommand(run1, run2, opts));
 
 // Default: list closed-issue cases
 closedIssuesCmd.action(() => closedIssuesListCommand({}));

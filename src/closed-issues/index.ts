@@ -28,3 +28,7 @@ export { extractCase, generateCaseId, saveCaseToYaml } from './extractor';
 
 // Comparator
 export { compareSolutions, calculateDiffSimilarity } from './comparator';
+
+// Runner
+export { runClosedIssueCase } from './runner';
+export type { RunCaseOptions, RunCaseResult } from './runner';

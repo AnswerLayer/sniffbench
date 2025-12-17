@@ -14,11 +14,30 @@ import {
   scanForClosedIssues,
   extractCase,
   saveCaseToYaml,
+  runClosedIssueCase,
   ScanOptions,
   ScanResult,
   ClosedIssueCase,
+  RunCaseResult,
 } from '../../closed-issues';
 import { getDefaultCasesDir, loadCases } from '../../cases/loader';
+import { loadVariants, findVariantByName, resolveVariantId } from '../../variants/store';
+import { Variant } from '../../variants/types';
+import { getActiveVariant } from './variant';
+import { variantImageExists } from '../../sandbox/variant-container';
+import {
+  loadRuns,
+  saveRuns,
+  generateRunId,
+  addRun,
+  getRun,
+  resolveRunId,
+  capturePartialAgentConfig,
+  diffAgentConfig,
+  ClosedIssueCaseRun,
+  Run,
+} from '../../runs';
+import { getAgent } from '../../agents';
 
 // =============================================================================
 // Command Interfaces
@@ -44,9 +63,12 @@ interface ListCommandOptions {
 
 interface RunCommandOptions {
   case?: string;
-  agent?: string;
   variant?: string;
-  output?: string;
+  local?: boolean;
+  timeout?: string;
+  stream?: boolean;
+  json?: boolean;
+  run?: string;
 }
 
 // =============================================================================
@@ -63,10 +85,12 @@ export async function closedIssuesScanCommand(
   const spinner = ora('Scanning for closed issues...').start();
 
   try {
-    const absolutePath = path.resolve(repoPath);
+    // Don't resolve path for GitHub URLs or owner/repo format
+    const isLocalPath = !repoPath.includes('github.com') && !repoPath.match(/^[^/]+\/[^/]+$/);
+    const resolvedPath = isLocalPath ? path.resolve(repoPath) : repoPath;
 
     const scanOptions: ScanOptions = {
-      repoPath: absolutePath,
+      repoPath: resolvedPath,
       maxIssues: options.maxIssues ? parseInt(options.maxIssues, 10) : 50,
       maxPrSize: options.maxPrSize ? parseInt(options.maxPrSize, 10) : 500,
       maxFilesChanged: options.maxFiles ? parseInt(options.maxFiles, 10) : 10,
@@ -291,32 +315,488 @@ export async function closedIssuesRunCommand(options: RunCommandOptions) {
       process.exit(1);
     }
 
-    spinner.text = `Running ${cases.length} case${cases.length === 1 ? '' : 's'}...`;
+    // Determine which variant to use
+    const projectRoot = process.cwd();
+    let variant: Variant | undefined;
 
-    // For now, output the cases that would be run
-    // Full implementation would use the interview command logic
-    spinner.succeed(`Ready to run ${cases.length} case${cases.length === 1 ? '' : 's'}`);
+    if (!options.local) {
+      // Use specified variant, or fall back to active variant
+      const variantName = options.variant || getActiveVariant(projectRoot);
 
+      if (variantName) {
+        const store = loadVariants(projectRoot);
+        const variantId = resolveVariantId(store, variantName);
+
+        if (!variantId) {
+          spinner.fail(`Variant not found: ${variantName}`);
+          process.exit(1);
+        }
+
+        variant = store.variants[variantId];
+
+        if (!variant.container) {
+          spinner.fail(`Variant "${variant.name}" has no container. Run: sniff variant build ${variant.name}`);
+          process.exit(1);
+        }
+
+        if (!variantImageExists(variant)) {
+          spinner.fail(`Container image missing for variant "${variant.name}". Run: sniff variant build ${variant.name}`);
+          process.exit(1);
+        }
+      } else {
+        // No variant specified and no active variant - require --local
+        spinner.fail('No active variant set. Use --variant <name> or --local to run without a container.');
+        console.log(chalk.dim('\n  Set an active variant: sniff variant use <name>'));
+        console.log(chalk.dim('  Or run locally: sniff closed-issues run --local\n'));
+        process.exit(1);
+      }
+    }
+
+    const timeoutMs = options.timeout ? parseInt(options.timeout, 10) * 1000 : 10 * 60 * 1000;
+
+    spinner.succeed(`Running ${cases.length} case${cases.length === 1 ? '' : 's'}${variant ? ` with variant "${variant.name}"` : ''}...`);
     console.log();
-    console.log(box(chalk.bold('Closed Issues Run'), 'closed-issues run'));
-    console.log();
 
-    for (const c of cases) {
-      const closedIssueCase = c as ClosedIssueCase;
-      console.log(`  ${chalk.cyan(c.id)}`);
-      console.log(`    ${chalk.dim('Issue:')} ${closedIssueCase.closedIssue?.issueUrl || 'N/A'}`);
-      console.log(`    ${chalk.dim('PR:')}    ${closedIssueCase.closedIssue?.prUrl || 'N/A'}`);
+    if (!options.json) {
+      console.log(box(chalk.bold('Closed Issues Run'), 'closed-issues run'));
       console.log();
     }
 
-    console.log(chalk.yellow('Note: Full run integration coming soon.'));
-    console.log(chalk.dim('For now, use sniff interview with the case ID.'));
+    const results: RunCaseResult[] = [];
+
+    for (let i = 0; i < cases.length; i++) {
+      const c = cases[i] as ClosedIssueCase;
+
+      if (!options.json) {
+        console.log(`${chalk.dim(`[${i + 1}/${cases.length}]`)} ${chalk.cyan(c.id)}`);
+        console.log(`    ${chalk.dim('Issue:')} ${c.closedIssue?.issueUrl || 'N/A'}`);
+        console.log(`    ${chalk.dim('PR:')}    ${c.closedIssue?.prUrl || 'N/A'}`);
+      }
+
+      const caseSpinner = options.json ? null : ora({ indent: 4, text: 'Running agent...' }).start();
+
+      const result = await runClosedIssueCase({
+        caseData: c,
+        variant,
+        projectRoot: process.cwd(),
+        timeoutMs,
+        stream: options.stream,
+        onStatus: (status) => {
+          if (caseSpinner) {
+            caseSpinner.text = status;
+          }
+        },
+        onOutput: options.stream
+          ? (type, data) => {
+              if (type === 'stdout') {
+                process.stdout.write(data);
+              } else {
+                process.stderr.write(chalk.dim(data));
+              }
+            }
+          : undefined,
+      });
+
+      results.push(result);
+
+      if (!options.json) {
+        if (result.success) {
+          caseSpinner?.succeed(`Completed in ${formatDuration(result.durationMs)}`);
+          console.log();
+          displayResultSummary(result);
+        } else {
+          caseSpinner?.fail(`Failed: ${result.error}`);
+        }
+        console.log();
+      }
+    }
+
+    // Save run to store
+    const runId = await saveClosedIssuesRun(projectRoot, results, variant, options.run);
+
+    // Output JSON if requested
+    if (options.json) {
+      console.log(JSON.stringify({ runId, results }, null, 2));
+      return;
+    }
+
+    // Display summary
+    displayRunSummary(results, runId);
 
   } catch (err) {
     spinner.fail('Run failed');
     console.error(chalk.red((err as Error).message));
     process.exit(1);
   }
+}
+
+/**
+ * Display a summary of a single result
+ */
+function displayResultSummary(result: RunCaseResult) {
+  const comp = result.comparison;
+
+  console.log(`    ${chalk.bold('Results:')}`);
+  console.log(`      ${chalk.dim('Overall Score:')} ${getScoreColor(comp.overallScore)}${comp.overallScore}/100${chalk.reset()}`);
+  console.log(`      ${chalk.dim('Diff Similarity:')} ${(comp.diffSimilarity * 100).toFixed(1)}%`);
+  console.log(`      ${chalk.dim('Scope Match:')} ${(comp.scopeMatch * 100).toFixed(1)}%`);
+  console.log(`      ${chalk.dim('Files Changed:')} ${result.filesChanged.length}`);
+
+  if (comp.details.matchingFiles.length > 0) {
+    console.log(`      ${chalk.dim('Matching Files:')} ${comp.details.matchingFiles.join(', ')}`);
+  }
+  if (comp.details.missingFiles.length > 0) {
+    console.log(`      ${chalk.yellow('Missing Files:')} ${comp.details.missingFiles.join(', ')}`);
+  }
+  if (comp.details.extraFiles.length > 0) {
+    console.log(`      ${chalk.dim('Extra Files:')} ${comp.details.extraFiles.join(', ')}`);
+  }
+
+  if (result.tokens) {
+    console.log(`      ${chalk.dim('Tokens:')} ${result.tokens.totalTokens.toLocaleString()}`);
+  }
+  if (result.costUsd !== undefined) {
+    console.log(`      ${chalk.dim('Cost:')} $${result.costUsd.toFixed(4)}`);
+  }
+}
+
+/**
+ * Display overall run summary
+ */
+function displayRunSummary(results: RunCaseResult[], runId: string) {
+  console.log(chalk.dim('─'.repeat(60)));
+  console.log();
+  console.log(chalk.bold('Summary'));
+  console.log();
+
+  const successful = results.filter(r => r.success);
+  const failed = results.filter(r => !r.success);
+
+  console.log(`  ${chalk.green('✓')} ${successful.length} passed`);
+  if (failed.length > 0) {
+    console.log(`  ${chalk.red('✗')} ${failed.length} failed`);
+  }
+
+  if (successful.length > 0) {
+    const avgScore = successful.reduce((sum, r) => sum + r.comparison.overallScore, 0) / successful.length;
+    const avgSimilarity = successful.reduce((sum, r) => sum + r.comparison.diffSimilarity, 0) / successful.length;
+    const totalDuration = results.reduce((sum, r) => sum + r.durationMs, 0);
+
+    console.log();
+    console.log(`  ${chalk.dim('Avg Score:')} ${avgScore.toFixed(1)}/100`);
+    console.log(`  ${chalk.dim('Avg Similarity:')} ${(avgSimilarity * 100).toFixed(1)}%`);
+    console.log(`  ${chalk.dim('Total Time:')} ${formatDuration(totalDuration)}`);
+
+    const totalTokens = results.reduce((sum, r) => sum + (r.tokens?.totalTokens || 0), 0);
+    const totalCost = results.reduce((sum, r) => sum + (r.costUsd || 0), 0);
+
+    if (totalTokens > 0) {
+      console.log(`  ${chalk.dim('Total Tokens:')} ${totalTokens.toLocaleString()}`);
+    }
+    if (totalCost > 0) {
+      console.log(`  ${chalk.dim('Total Cost:')} $${totalCost.toFixed(4)}`);
+    }
+  }
+
+  console.log();
+  console.log(`  ${chalk.dim('Run ID:')} ${chalk.cyan(runId)}`);
+  console.log();
+  console.log(chalk.dim(`  Compare runs: sniff closed-issues compare <run1> <run2>`));
+  console.log();
+}
+
+/**
+ * Save closed-issues run to the store
+ */
+async function saveClosedIssuesRun(
+  projectRoot: string,
+  results: RunCaseResult[],
+  variant: Variant | undefined,
+  label?: string
+): Promise<string> {
+  // Capture agent config
+  const agent = getAgent('claude-code');
+  const agentConfig = await capturePartialAgentConfig(agent, projectRoot);
+
+  // Link to variant if used
+  if (variant) {
+    agentConfig.variantId = variant.id;
+  }
+
+  // Convert results to ClosedIssueCaseRun format
+  const closedIssueCases: Record<string, ClosedIssueCaseRun> = {};
+  for (const result of results) {
+    closedIssueCases[result.caseId] = {
+      success: result.success,
+      error: result.error,
+      durationMs: result.durationMs,
+      filesChanged: result.filesChanged,
+      agentDiff: result.agentDiff,
+      comparison: {
+        functionalMatch: result.comparison.functionalMatch,
+        diffSimilarity: result.comparison.diffSimilarity,
+        scopeMatch: result.comparison.scopeMatch,
+        styleScore: result.comparison.styleScore,
+        overallScore: result.comparison.overallScore,
+        details: {
+          missingFiles: result.comparison.details.missingFiles,
+          extraFiles: result.comparison.details.extraFiles,
+          matchingFiles: result.comparison.details.matchingFiles,
+          testOutput: result.comparison.details.testOutput,
+          lintOutput: result.comparison.details.lintOutput,
+        },
+      },
+      agentOutput: result.agentOutput,
+      behaviorMetrics: result.tokens ? {
+        totalTokens: result.tokens.totalTokens,
+        inputTokens: result.tokens.inputTokens,
+        cacheReadTokens: result.tokens.cacheReadTokens,
+        cacheWriteTokens: result.tokens.cacheWriteTokens,
+        costUsd: result.costUsd || 0,
+      } : undefined,
+    };
+  }
+
+  // Create run
+  const run: Run = {
+    id: generateRunId(),
+    label,
+    type: 'closed-issues',
+    createdAt: new Date().toISOString(),
+    agent: agentConfig,
+    cases: {},
+    closedIssueCases,
+  };
+
+  // Save to store
+  const store = loadRuns(projectRoot);
+  addRun(store, run);
+  saveRuns(projectRoot, store);
+
+  return run.id;
+}
+
+/**
+ * Get color based on score
+ */
+function getScoreColor(score: number): string {
+  if (score >= 80) return chalk.green('');
+  if (score >= 60) return chalk.yellow('');
+  return chalk.red('');
+}
+
+/**
+ * Format duration in human-readable form
+ */
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+  const minutes = Math.floor(ms / 60000);
+  const seconds = Math.floor((ms % 60000) / 1000);
+  return `${minutes}m ${seconds}s`;
+}
+
+// =============================================================================
+// Compare Command
+// =============================================================================
+
+interface CompareCommandOptions {
+  json?: boolean;
+}
+
+/**
+ * Compare two closed-issues runs
+ */
+export async function closedIssuesCompareCommand(
+  run1Id: string,
+  run2Id: string,
+  options: CompareCommandOptions
+) {
+  const projectRoot = process.cwd();
+  const store = loadRuns(projectRoot);
+
+  // Resolve run IDs
+  const resolvedId1 = resolveRunId(store, run1Id);
+  const resolvedId2 = resolveRunId(store, run2Id);
+
+  if (!resolvedId1) {
+    console.error(chalk.red(`Run not found: ${run1Id}`));
+    process.exit(1);
+  }
+
+  if (!resolvedId2) {
+    console.error(chalk.red(`Run not found: ${run2Id}`));
+    process.exit(1);
+  }
+
+  const run1 = getRun(store, resolvedId1)!;
+  const run2 = getRun(store, resolvedId2)!;
+
+  // Verify both are closed-issues runs
+  if (run1.type !== 'closed-issues' || !run1.closedIssueCases) {
+    console.error(chalk.red(`Run ${run1Id} is not a closed-issues run`));
+    process.exit(1);
+  }
+
+  if (run2.type !== 'closed-issues' || !run2.closedIssueCases) {
+    console.error(chalk.red(`Run ${run2Id} is not a closed-issues run`));
+    process.exit(1);
+  }
+
+  // Build comparison data
+  const comparison = buildComparison(run1, run2);
+
+  if (options.json) {
+    console.log(JSON.stringify(comparison, null, 2));
+    return;
+  }
+
+  // Display comparison
+  displayComparison(run1, run2, comparison);
+}
+
+interface RunComparison {
+  configDiff: Array<{ field: string; run1: string; run2: string }>;
+  caseComparisons: Array<{
+    caseId: string;
+    run1: ClosedIssueCaseRun | null;
+    run2: ClosedIssueCaseRun | null;
+    scoreDiff: number;
+    similarityDiff: number;
+  }>;
+  summary: {
+    avgScoreDiff: number;
+    avgSimilarityDiff: number;
+    totalDurationDiff: number;
+    run1Passed: number;
+    run2Passed: number;
+  };
+}
+
+function buildComparison(run1: Run, run2: Run): RunComparison {
+  // Get config diff - map old/new to run1/run2
+  const rawDiff = diffAgentConfig(run1.agent, run2.agent);
+  const configDiff = rawDiff.map((d) => ({ field: d.field, run1: d.old, run2: d.new }));
+
+  // Get all case IDs from both runs
+  const allCaseIds = new Set([
+    ...Object.keys(run1.closedIssueCases || {}),
+    ...Object.keys(run2.closedIssueCases || {}),
+  ]);
+
+  const caseComparisons: RunComparison['caseComparisons'] = [];
+  let totalScoreDiff = 0;
+  let totalSimilarityDiff = 0;
+  let totalDurationDiff = 0;
+  let run1Passed = 0;
+  let run2Passed = 0;
+  let comparableCount = 0;
+
+  for (const caseId of allCaseIds) {
+    const case1 = run1.closedIssueCases?.[caseId] || null;
+    const case2 = run2.closedIssueCases?.[caseId] || null;
+
+    const score1 = case1?.comparison.overallScore || 0;
+    const score2 = case2?.comparison.overallScore || 0;
+    const similarity1 = case1?.comparison.diffSimilarity || 0;
+    const similarity2 = case2?.comparison.diffSimilarity || 0;
+
+    if (case1?.success) run1Passed++;
+    if (case2?.success) run2Passed++;
+
+    if (case1 && case2) {
+      totalScoreDiff += score2 - score1;
+      totalSimilarityDiff += similarity2 - similarity1;
+      totalDurationDiff += (case2.durationMs || 0) - (case1.durationMs || 0);
+      comparableCount++;
+    }
+
+    caseComparisons.push({
+      caseId,
+      run1: case1,
+      run2: case2,
+      scoreDiff: score2 - score1,
+      similarityDiff: similarity2 - similarity1,
+    });
+  }
+
+  return {
+    configDiff,
+    caseComparisons,
+    summary: {
+      avgScoreDiff: comparableCount > 0 ? totalScoreDiff / comparableCount : 0,
+      avgSimilarityDiff: comparableCount > 0 ? totalSimilarityDiff / comparableCount : 0,
+      totalDurationDiff,
+      run1Passed,
+      run2Passed,
+    },
+  };
+}
+
+function displayComparison(run1: Run, run2: Run, comparison: RunComparison) {
+  console.log();
+  console.log(box(chalk.bold('Closed Issues Run Comparison'), 'closed-issues compare'));
+  console.log();
+
+  // Run info
+  console.log(chalk.bold('  Runs:'));
+  console.log(`    ${chalk.cyan(run1.label || run1.id)} (${new Date(run1.createdAt).toLocaleDateString()})`);
+  console.log(`    ${chalk.cyan('vs')}`);
+  console.log(`    ${chalk.cyan(run2.label || run2.id)} (${new Date(run2.createdAt).toLocaleDateString()})`);
+  console.log();
+
+  // Config diff
+  if (comparison.configDiff.length > 0) {
+    console.log(chalk.bold('  Configuration Changes:'));
+    for (const diff of comparison.configDiff) {
+      console.log(`    ${chalk.dim(diff.field + ':')} ${diff.run1} ${chalk.yellow('→')} ${diff.run2}`);
+    }
+    console.log();
+  }
+
+  // Case comparisons
+  console.log(chalk.bold('  Case Comparison:'));
+  console.log(
+    chalk.dim('    ' +
+      'Case'.padEnd(45) +
+      'Score'.padEnd(20) +
+      'Similarity'.padEnd(20)
+    )
+  );
+  console.log(chalk.dim('    ' + '─'.repeat(85)));
+
+  for (const caseComp of comparison.caseComparisons) {
+    const caseId = caseComp.caseId.substring(0, 43).padEnd(45);
+
+    const score1 = caseComp.run1?.comparison.overallScore ?? '-';
+    const score2 = caseComp.run2?.comparison.overallScore ?? '-';
+    const scoreDiffStr = formatDiff(caseComp.scoreDiff, '');
+    const scoreStr = `${score1} → ${score2} ${scoreDiffStr}`.padEnd(20);
+
+    const sim1 = caseComp.run1 ? `${(caseComp.run1.comparison.diffSimilarity * 100).toFixed(0)}%` : '-';
+    const sim2 = caseComp.run2 ? `${(caseComp.run2.comparison.diffSimilarity * 100).toFixed(0)}%` : '-';
+    const simDiffStr = formatDiff(caseComp.similarityDiff * 100, '%');
+    const simStr = `${sim1} → ${sim2} ${simDiffStr}`;
+
+    console.log(`    ${caseId}${scoreStr}${simStr}`);
+  }
+
+  console.log();
+
+  // Summary
+  console.log(chalk.bold('  Summary:'));
+  console.log(`    ${chalk.dim('Passed:')} ${comparison.summary.run1Passed} → ${comparison.summary.run2Passed}`);
+  console.log(`    ${chalk.dim('Avg Score Δ:')} ${formatDiff(comparison.summary.avgScoreDiff, '')}`);
+  console.log(`    ${chalk.dim('Avg Similarity Δ:')} ${formatDiff(comparison.summary.avgSimilarityDiff * 100, '%')}`);
+  console.log(`    ${chalk.dim('Total Duration Δ:')} ${formatDiff(comparison.summary.totalDurationDiff / 1000, 's')}`);
+  console.log();
+}
+
+function formatDiff(diff: number, suffix: string): string {
+  if (diff === 0) return chalk.dim(`0${suffix}`);
+  const sign = diff > 0 ? '+' : '';
+  const color = diff > 0 ? chalk.green : chalk.red;
+  return color(`${sign}${diff.toFixed(1)}${suffix}`);
 }
 
 // =============================================================================

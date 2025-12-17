@@ -251,7 +251,7 @@ export async function loadCaseFile(filePath: string, options: LoadOptions = {}):
  * Convert raw data to a Case object
  */
 function dataToCase(data: Record<string, unknown>, filePath: string): Case {
-  return {
+  const caseData: Case = {
     id: data.id as string,
     title: data.title as string,
     prompt: data.prompt as string,
@@ -269,6 +269,16 @@ function dataToCase(data: Record<string, unknown>, filePath: string): Case {
     _sourcePath: filePath,
     _loadedAt: new Date(),
   };
+
+  // Preserve closed-issue specific fields
+  if (data.closedIssue) {
+    (caseData as unknown as Record<string, unknown>).closedIssue = data.closedIssue;
+  }
+  if (data.referenceSolution) {
+    (caseData as unknown as Record<string, unknown>).referenceSolution = data.referenceSolution;
+  }
+
+  return caseData;
 }
 
 /**
