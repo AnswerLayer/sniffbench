@@ -707,13 +707,24 @@ interface RunComparison {
     run2: ClosedIssueCaseRun | null;
     scoreDiff: number;
     similarityDiff: number;
+    durationDiff: number;
+    tokensDiff: number;
+    costDiff: number;
   }>;
   summary: {
     avgScoreDiff: number;
     avgSimilarityDiff: number;
     totalDurationDiff: number;
+    totalTokensDiff: number;
+    totalCostDiff: number;
     run1Passed: number;
     run2Passed: number;
+    run1TotalTokens: number;
+    run2TotalTokens: number;
+    run1TotalCost: number;
+    run2TotalCost: number;
+    run1TotalDuration: number;
+    run2TotalDuration: number;
   };
 }
 
@@ -732,8 +743,16 @@ function buildComparison(run1: Run, run2: Run): RunComparison {
   let totalScoreDiff = 0;
   let totalSimilarityDiff = 0;
   let totalDurationDiff = 0;
+  let totalTokensDiff = 0;
+  let totalCostDiff = 0;
   let run1Passed = 0;
   let run2Passed = 0;
+  let run1TotalTokens = 0;
+  let run2TotalTokens = 0;
+  let run1TotalCost = 0;
+  let run2TotalCost = 0;
+  let run1TotalDuration = 0;
+  let run2TotalDuration = 0;
   let comparableCount = 0;
 
   for (const caseId of allCaseIds) {
@@ -744,14 +763,30 @@ function buildComparison(run1: Run, run2: Run): RunComparison {
     const score2 = case2?.comparison.overallScore || 0;
     const similarity1 = case1?.comparison.diffSimilarity || 0;
     const similarity2 = case2?.comparison.diffSimilarity || 0;
+    const duration1 = case1?.durationMs || 0;
+    const duration2 = case2?.durationMs || 0;
+    const tokens1 = case1?.behaviorMetrics?.totalTokens || 0;
+    const tokens2 = case2?.behaviorMetrics?.totalTokens || 0;
+    const cost1 = case1?.behaviorMetrics?.costUsd || 0;
+    const cost2 = case2?.behaviorMetrics?.costUsd || 0;
 
     if (case1?.success) run1Passed++;
     if (case2?.success) run2Passed++;
 
+    // Accumulate totals
+    run1TotalTokens += tokens1;
+    run2TotalTokens += tokens2;
+    run1TotalCost += cost1;
+    run2TotalCost += cost2;
+    run1TotalDuration += duration1;
+    run2TotalDuration += duration2;
+
     if (case1 && case2) {
       totalScoreDiff += score2 - score1;
       totalSimilarityDiff += similarity2 - similarity1;
-      totalDurationDiff += (case2.durationMs || 0) - (case1.durationMs || 0);
+      totalDurationDiff += duration2 - duration1;
+      totalTokensDiff += tokens2 - tokens1;
+      totalCostDiff += cost2 - cost1;
       comparableCount++;
     }
 
@@ -761,6 +796,9 @@ function buildComparison(run1: Run, run2: Run): RunComparison {
       run2: case2,
       scoreDiff: score2 - score1,
       similarityDiff: similarity2 - similarity1,
+      durationDiff: duration2 - duration1,
+      tokensDiff: tokens2 - tokens1,
+      costDiff: cost2 - cost1,
     });
   }
 
@@ -771,8 +809,16 @@ function buildComparison(run1: Run, run2: Run): RunComparison {
       avgScoreDiff: comparableCount > 0 ? totalScoreDiff / comparableCount : 0,
       avgSimilarityDiff: comparableCount > 0 ? totalSimilarityDiff / comparableCount : 0,
       totalDurationDiff,
+      totalTokensDiff,
+      totalCostDiff,
       run1Passed,
       run2Passed,
+      run1TotalTokens,
+      run2TotalTokens,
+      run1TotalCost,
+      run2TotalCost,
+      run1TotalDuration,
+      run2TotalDuration,
     },
   };
 }
@@ -802,38 +848,70 @@ function displayComparison(run1: Run, run2: Run, comparison: RunComparison) {
   console.log(chalk.bold('  Case Comparison:'));
   console.log(
     chalk.dim('    ' +
-      'Case'.padEnd(45) +
-      'Score'.padEnd(20) +
-      'Similarity'.padEnd(20)
+      'Case'.padEnd(40) +
+      'Score'.padEnd(18) +
+      'Similarity'.padEnd(18) +
+      'Time'.padEnd(16) +
+      'Cost'
     )
   );
-  console.log(chalk.dim('    ' + '─'.repeat(85)));
+  console.log(chalk.dim('    ' + '─'.repeat(100)));
 
   for (const caseComp of comparison.caseComparisons) {
-    const caseId = caseComp.caseId.substring(0, 43).padEnd(45);
+    const caseId = caseComp.caseId.substring(0, 38).padEnd(40);
 
     const score1 = caseComp.run1?.comparison.overallScore ?? '-';
     const score2 = caseComp.run2?.comparison.overallScore ?? '-';
     const scoreDiffStr = formatDiff(caseComp.scoreDiff, '');
-    const scoreStr = `${score1} → ${score2} ${scoreDiffStr}`.padEnd(20);
+    const scoreStr = `${score1} → ${score2} ${scoreDiffStr}`.padEnd(18);
 
     const sim1 = caseComp.run1 ? `${(caseComp.run1.comparison.diffSimilarity * 100).toFixed(0)}%` : '-';
     const sim2 = caseComp.run2 ? `${(caseComp.run2.comparison.diffSimilarity * 100).toFixed(0)}%` : '-';
     const simDiffStr = formatDiff(caseComp.similarityDiff * 100, '%');
-    const simStr = `${sim1} → ${sim2} ${simDiffStr}`;
+    const simStr = `${sim1} → ${sim2} ${simDiffStr}`.padEnd(18);
 
-    console.log(`    ${caseId}${scoreStr}${simStr}`);
+    const time1 = caseComp.run1 ? `${(caseComp.run1.durationMs / 1000).toFixed(0)}s` : '-';
+    const time2 = caseComp.run2 ? `${(caseComp.run2.durationMs / 1000).toFixed(0)}s` : '-';
+    const timeDiffStr = formatDiffInverse(caseComp.durationDiff / 1000, 's');
+    const timeStr = `${time1} → ${time2} ${timeDiffStr}`.padEnd(16);
+
+    const cost1 = caseComp.run1?.behaviorMetrics?.costUsd;
+    const cost2 = caseComp.run2?.behaviorMetrics?.costUsd;
+    const costStr1 = cost1 !== undefined ? `$${cost1.toFixed(2)}` : '-';
+    const costStr2 = cost2 !== undefined ? `$${cost2.toFixed(2)}` : '-';
+    const costDiffStr = formatDiffInverse(caseComp.costDiff, '', true);
+    const costStr = `${costStr1} → ${costStr2} ${costDiffStr}`;
+
+    console.log(`    ${caseId}${scoreStr}${simStr}${timeStr}${costStr}`);
   }
 
   console.log();
 
-  // Summary
-  console.log(chalk.bold('  Summary:'));
+  // Summary - Quality (higher is better)
+  console.log(chalk.bold('  Quality (↑ better):'));
   console.log(`    ${chalk.dim('Passed:')} ${comparison.summary.run1Passed} → ${comparison.summary.run2Passed}`);
   console.log(`    ${chalk.dim('Avg Score Δ:')} ${formatDiff(comparison.summary.avgScoreDiff, '')}`);
   console.log(`    ${chalk.dim('Avg Similarity Δ:')} ${formatDiff(comparison.summary.avgSimilarityDiff * 100, '%')}`);
-  console.log(`    ${chalk.dim('Total Duration Δ:')} ${formatDiff(comparison.summary.totalDurationDiff / 1000, 's')}`);
   console.log();
+
+  // Summary - Efficiency (lower is better)
+  console.log(chalk.bold('  Efficiency (↓ better):'));
+  const { run1TotalDuration, run2TotalDuration, run1TotalTokens, run2TotalTokens, run1TotalCost, run2TotalCost } = comparison.summary;
+  console.log(`    ${chalk.dim('Time:')} ${formatDurationCompact(run1TotalDuration)} → ${formatDurationCompact(run2TotalDuration)} ${formatDiffInverse(comparison.summary.totalDurationDiff / 1000, 's')}`);
+  console.log(`    ${chalk.dim('Tokens:')} ${run1TotalTokens.toLocaleString()} → ${run2TotalTokens.toLocaleString()} ${formatDiffInverse(comparison.summary.totalTokensDiff, '', false, true)}`);
+  console.log(`    ${chalk.dim('Cost:')} $${run1TotalCost.toFixed(2)} → $${run2TotalCost.toFixed(2)} ${formatDiffInverse(comparison.summary.totalCostDiff, '', true)}`);
+  console.log();
+}
+
+/**
+ * Format duration in compact form
+ */
+function formatDurationCompact(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(0)}s`;
+  const minutes = Math.floor(ms / 60000);
+  const seconds = Math.floor((ms % 60000) / 1000);
+  return `${minutes}m${seconds}s`;
 }
 
 function formatDiff(diff: number, suffix: string): string {
@@ -841,6 +919,20 @@ function formatDiff(diff: number, suffix: string): string {
   const sign = diff > 0 ? '+' : '';
   const color = diff > 0 ? chalk.green : chalk.red;
   return color(`${sign}${diff.toFixed(1)}${suffix}`);
+}
+
+/**
+ * Format diff where lower is better (green for negative, red for positive)
+ */
+function formatDiffInverse(diff: number, suffix: string, isCurrency = false, formatLarge = false): string {
+  if (Math.abs(diff) < 0.01) return chalk.dim(isCurrency ? '$0' : `0${suffix}`);
+  const sign = diff > 0 ? '+' : '';
+  const color = diff < 0 ? chalk.green : chalk.red;  // Inverted: negative is good
+  if (isCurrency) {
+    return color(`${sign}$${Math.abs(diff).toFixed(2)}`);
+  }
+  const value = formatLarge ? Math.round(diff).toLocaleString() : diff.toFixed(1);
+  return color(`${sign}${value}${suffix}`);
 }
 
 // =============================================================================
