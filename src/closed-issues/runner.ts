@@ -256,18 +256,32 @@ async function prepareWorkingDirectory(
   const repoUrl = `https://github.com/${owner}/${repo}.git`;
 
   try {
-    // Clone with depth 1 to the target commit
+    // Clone with depth 1 for speed
     execSync(`git clone --depth 1 "${repoUrl}" "${targetDir}"`, {
       encoding: 'utf-8',
       timeout: 60000, // 1 minute timeout for clone
     });
 
-    // Fetch the specific commit
-    execSync(`git fetch --depth 1 origin ${commitSha}`, {
-      cwd: targetDir,
-      encoding: 'utf-8',
-      timeout: 60000,
-    });
+    // Try to fetch the specific commit with shallow history
+    try {
+      execSync(`git fetch --depth 1 origin ${commitSha}`, {
+        cwd: targetDir,
+        encoding: 'utf-8',
+        timeout: 60000,
+      });
+    } catch {
+      // Commit not reachable in shallow history, unshallow and retry
+      execSync(`git fetch --unshallow`, {
+        cwd: targetDir,
+        encoding: 'utf-8',
+        timeout: 120000, // 2 minutes for full history
+      });
+      execSync(`git fetch origin ${commitSha}`, {
+        cwd: targetDir,
+        encoding: 'utf-8',
+        timeout: 60000,
+      });
+    }
 
     // Checkout to that commit
     execSync(`git checkout ${commitSha}`, {
