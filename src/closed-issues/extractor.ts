@@ -48,7 +48,7 @@ export async function extractCase(
   }
 
   // Get commit before PR merge
-  const commitBefore = await getCommitBeforePR(repoPath, pr);
+  const commitBefore = await getCommitBeforePR(parsed.owner, parsed.repo, pr, repoPath);
 
   // Get PR diff
   const diff = await getPRDiff(parsed.owner, parsed.repo, pr.number);
@@ -302,31 +302,54 @@ async function findClosingPR(owner: string, repo: string, issueNumber: number): 
 /**
  * Get the commit SHA before the PR was merged
  */
-async function getCommitBeforePR(repoPath: string, pr: GitHubPR): Promise<string> {
+async function getCommitBeforePR(
+  owner: string,
+  repo: string,
+  pr: GitHubPR,
+  repoPath?: string
+): Promise<string> {
   if (!pr.mergeCommit?.oid) {
     throw new Error('PR has no merge commit');
   }
 
-  try {
-    // Get the parent of the merge commit (the state before the PR)
-    const result = execSync(`git rev-parse ${pr.mergeCommit.oid}^1`, {
-      cwd: repoPath,
-      encoding: 'utf-8',
-    });
-
-    return result.trim();
-  } catch {
-    // Fallback: try to find the base branch commit
+  // Try local git first if we have a repo path
+  if (repoPath) {
     try {
-      const result = execSync(`git merge-base ${pr.baseRefName} ${pr.mergeCommit.oid}`, {
+      // Get the parent of the merge commit (the state before the PR)
+      const result = execSync(`git rev-parse ${pr.mergeCommit.oid}^1`, {
         cwd: repoPath,
         encoding: 'utf-8',
       });
       return result.trim();
     } catch {
-      throw new Error(`Could not determine commit before PR #${pr.number}`);
+      // Fallback: try to find the base branch commit locally
+      try {
+        const result = execSync(`git merge-base ${pr.baseRefName} ${pr.mergeCommit.oid}`, {
+          cwd: repoPath,
+          encoding: 'utf-8',
+        });
+        return result.trim();
+      } catch {
+        // Continue to GitHub API fallback
+      }
     }
   }
+
+  // Fallback: use GitHub API to get the commit's parent
+  try {
+    const result = execSync(
+      `gh api repos/${owner}/${repo}/commits/${pr.mergeCommit.oid} --jq '.parents[0].sha'`,
+      { encoding: 'utf-8' }
+    );
+    const parentSha = result.trim();
+    if (parentSha) {
+      return parentSha;
+    }
+  } catch {
+    // Continue to error
+  }
+
+  throw new Error(`Could not determine commit before PR #${pr.number}`);
 }
 
 /**

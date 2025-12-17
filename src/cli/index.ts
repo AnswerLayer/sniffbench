@@ -295,6 +295,7 @@ closedIssuesCmd
   .option('--since <date>', 'Only issues merged after this date (YYYY-MM-DD)')
   .option('--require-tests', 'Only include issues with test changes')
   .option('--all', 'Show all issues including excluded ones')
+  .option('--add', 'Add all found issues as test cases')
   .option('--json', 'Output as JSON')
   .action((repoPath, opts) => closedIssuesScanCommand(repoPath, opts));
 

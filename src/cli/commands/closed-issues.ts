@@ -51,6 +51,7 @@ interface ScanCommandOptions {
   requireTests?: boolean;
   all?: boolean;
   json?: boolean;
+  add?: boolean;
 }
 
 interface AddCommandOptions {
@@ -152,9 +153,52 @@ export async function closedIssuesScanCommand(
 
     console.log();
     console.log(chalk.dim('─'.repeat(95)));
-    console.log(
-      chalk.dim(`\nTo add an issue as a case: ${chalk.cyan('sniff closed-issues add <owner/repo#number>')}`)
-    );
+
+    // Handle --add flag: bulk add all non-excluded issues
+    if (options.add) {
+      const eligibleResults = results.filter(r => !r.excluded);
+
+      if (eligibleResults.length === 0) {
+        console.log(chalk.yellow('\nNo eligible issues to add (all are excluded).'));
+        console.log(chalk.dim('Use --all to include excluded issues.'));
+        return;
+      }
+
+      console.log();
+      const addSpinner = ora(`Adding ${eligibleResults.length} case${eligibleResults.length === 1 ? '' : 's'}...`).start();
+
+      const casesDir = path.join(getClosedIssuesCasesDir(), 'closed-issues');
+      let added = 0;
+      let failed = 0;
+
+      for (const result of eligibleResults) {
+        const issueRef = `${result.issue.repo}#${result.issue.issueNumber}`;
+        try {
+          const caseData = await extractCase(issueRef, resolvedPath);
+          saveCaseToYaml(caseData, casesDir);
+          added++;
+          addSpinner.text = `Adding cases... (${added}/${eligibleResults.length})`;
+        } catch (err) {
+          failed++;
+          // Continue with other issues even if one fails
+        }
+      }
+
+      if (failed === 0) {
+        addSpinner.succeed(`Added ${added} case${added === 1 ? '' : 's'}`);
+      } else {
+        addSpinner.warn(`Added ${added} case${added === 1 ? '' : 's'}, ${failed} failed`);
+      }
+
+      console.log(chalk.dim(`\nRun cases with: ${chalk.cyan('sniff closed-issues run')}`));
+    } else {
+      console.log(
+        chalk.dim(`\nTo add an issue as a case: ${chalk.cyan('sniff closed-issues add <owner/repo#number>')}`)
+      );
+      console.log(
+        chalk.dim(`To add all found issues: ${chalk.cyan('sniff closed-issues scan <repo> --add')}`)
+      );
+    }
   } catch (err) {
     spinner.fail('Scan failed');
     console.error(chalk.red((err as Error).message));
