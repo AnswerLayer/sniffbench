@@ -120,7 +120,7 @@ export function calculateDiffSimilarity(diff1: string, diff2: string): number {
 /**
  * Calculate overlap between agent files and reference files
  */
-function calculateFileOverlap(
+export function calculateFileOverlap(
   agentFiles: string[],
   referenceFiles: string[]
 ): {
@@ -313,7 +313,7 @@ function levenshteinDistance(s1: string, s2: string): number {
 /**
  * Calculate overall weighted score
  */
-function calculateOverallScore(metrics: {
+export function calculateOverallScore(metrics: {
   functionalMatch: boolean | undefined;
   diffSimilarity: number;
   scopeMatch: number;

@@ -10,7 +10,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { ClosedIssueCase, ComparisonResult, ReferenceSolution } from './types';
-import { calculateDiffSimilarity, parseDiff } from './comparator';
+import {
+  calculateDiffSimilarity,
+  calculateFileOverlap,
+  calculateOverallScore,
+  parseDiff,
+} from './comparator';
 import { Variant } from '../variants/types';
 import { runInVariant, RunOptions, VariantRunResult } from '../sandbox/variant-runner';
 import { collectRequiredEnvVars } from '../sandbox/variant-container';
@@ -464,62 +469,3 @@ function compareToReference(
   };
 }
 
-/**
- * Calculate overlap between agent files and reference files
- */
-function calculateFileOverlap(
-  agentFiles: string[],
-  referenceFiles: string[]
-): {
-  missingFiles: string[];
-  extraFiles: string[];
-  matchingFiles: string[];
-  scopeMatch: number;
-} {
-  const agentSet = new Set(agentFiles);
-  const refSet = new Set(referenceFiles);
-
-  const matchingFiles = agentFiles.filter((f) => refSet.has(f));
-  const missingFiles = referenceFiles.filter((f) => !agentSet.has(f));
-  const extraFiles = agentFiles.filter((f) => !refSet.has(f));
-
-  // Calculate Jaccard similarity
-  const union = new Set([...agentFiles, ...referenceFiles]);
-  const scopeMatch = union.size > 0 ? matchingFiles.length / union.size : 0;
-
-  return {
-    missingFiles,
-    extraFiles,
-    matchingFiles,
-    scopeMatch,
-  };
-}
-
-/**
- * Calculate overall weighted score
- */
-function calculateOverallScore(metrics: {
-  functionalMatch: boolean | undefined;
-  diffSimilarity: number;
-  scopeMatch: number;
-  styleScore: number;
-}): number {
-  // Weights from the rubric
-  const weights = {
-    functional: 40,
-    similarity: 35,
-    scope: 15,
-    style: 10,
-  };
-
-  // Only award functional points if tests actually ran and passed
-  const functionalScore = metrics.functionalMatch === true ? weights.functional : 0;
-
-  const score =
-    functionalScore +
-    metrics.diffSimilarity * weights.similarity +
-    metrics.scopeMatch * weights.scope +
-    metrics.styleScore * weights.style;
-
-  return Math.round(score);
-}
