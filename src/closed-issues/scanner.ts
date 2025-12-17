@@ -13,8 +13,15 @@ import {
   ClosedIssueSummary,
   CaseQuality,
   GitHubPR,
+  GitHubIssue,
 } from './types';
 import { CaseDifficulty } from '../cases/types';
+
+/** Issue with its closing PR (from issue-centric query) */
+interface IssueWithClosingPR {
+  issue: GitHubIssue;
+  closingPR: GitHubPR;
+}
 
 // =============================================================================
 // Constants
@@ -57,6 +64,12 @@ const ISSUE_LINK_PATTERNS = [
 /**
  * Scan a repository for closed issues suitable for agent evaluation
  *
+ * Uses multiple strategies to find issues closed by PRs:
+ * 1. Issue-centric: Query issues and check ClosedEvent.closer (catches UI-linked PRs)
+ * 2. PR-centric: Query PRs with closingIssuesReferences (catches keyword-linked)
+ *
+ * Results are deduplicated by issue number.
+ *
  * @param options - Scan configuration options
  * @returns Array of scan results with quality metrics
  */
@@ -77,23 +90,20 @@ export async function scanForClosedIssues(options: ScanOptions): Promise<ScanRes
     throw new Error(`Could not determine repository info from ${repoPath}`);
   }
 
-  // Fetch merged PRs with linked issues
-  const prs = await fetchMergedPRsWithIssues(repoInfo, maxIssues * 2, since);
-
   const results: ScanResult[] = [];
+  const seenIssues = new Set<number>();
 
-  for (const pr of prs) {
-    // Skip PRs without linked issues
-    if (!pr.closingIssuesReferences?.nodes?.length) {
-      continue;
-    }
+  // Strategy 1: Issue-centric approach (primary)
+  // This catches issues closed via GitHub UI without "Closes #X" syntax
+  const issuesWithPRs = await fetchClosedIssuesWithPRs(repoInfo, maxIssues * 2, since);
 
-    // Get the first linked issue
-    const issue = pr.closingIssuesReferences.nodes[0];
+  for (const { issue, closingPR: pr } of issuesWithPRs) {
+    if (seenIssues.has(issue.number)) continue;
+    seenIssues.add(issue.number);
 
     // Check quality and filtering criteria
     const quality = calculateQuality(pr, issue.body);
-    const excluded = getExclusionReason(pr, issue, options, quality);
+    const excluded = getExclusionReason(pr, { body: issue.body }, options, quality);
 
     if (excluded && !includeAll) {
       continue;
@@ -126,6 +136,63 @@ export async function scanForClosedIssues(options: ScanOptions): Promise<ScanRes
 
     if (results.length >= maxIssues) {
       break;
+    }
+  }
+
+  // Strategy 2: PR-centric approach (fallback)
+  // This catches PRs with explicit "Closes #X" keywords that might have been missed
+  if (results.length < maxIssues) {
+    const prs = await fetchMergedPRsWithIssues(repoInfo, maxIssues * 2, since);
+
+    for (const pr of prs) {
+      // Skip PRs without linked issues
+      if (!pr.closingIssuesReferences?.nodes?.length) {
+        continue;
+      }
+
+      // Get the first linked issue
+      const issue = pr.closingIssuesReferences.nodes[0];
+
+      // Skip if we already found this issue via issue-centric approach
+      if (seenIssues.has(issue.number)) continue;
+      seenIssues.add(issue.number);
+
+      // Check quality and filtering criteria
+      const quality = calculateQuality(pr, issue.body);
+      const excluded = getExclusionReason(pr, issue, options, quality);
+
+      if (excluded && !includeAll) {
+        continue;
+      }
+
+      // Detect language from PR files
+      const language = await detectLanguage(repoInfo, pr.number);
+
+      // Estimate difficulty from PR size
+      const difficulty = estimateDifficulty(pr.additions + pr.deletions, pr.changedFiles);
+
+      const summary: ClosedIssueSummary = {
+        issueNumber: issue.number,
+        issueTitle: issue.title,
+        prNumber: pr.number,
+        prTitle: pr.title,
+        repo: `${repoInfo.owner}/${repoInfo.name}`,
+        issueUrl: issue.url,
+        prUrl: pr.url,
+        mergedAt: new Date(pr.mergedAt!),
+        language,
+        difficulty,
+      };
+
+      results.push({
+        issue: summary,
+        quality,
+        excluded,
+      });
+
+      if (results.length >= maxIssues) {
+        break;
+      }
     }
   }
 
@@ -233,7 +300,122 @@ function getRepoInfo(repoPath: string): RepoInfo | null {
 }
 
 /**
- * Fetch merged PRs with their linked issues using gh CLI
+ * Fetch closed issues with their closing PRs (issue-centric approach)
+ *
+ * This captures ALL issues closed by PRs regardless of whether the PR
+ * uses "Closes #X" syntax. It works by querying the issue's ClosedEvent
+ * timeline and checking if the closer is a merged PR.
+ */
+async function fetchClosedIssuesWithPRs(
+  repo: RepoInfo,
+  limit: number,
+  since?: Date
+): Promise<IssueWithClosingPR[]> {
+  const query = `
+    query($owner: String!, $name: String!, $first: Int!) {
+      repository(owner: $owner, name: $name) {
+        issues(states: CLOSED, first: $first, orderBy: { field: UPDATED_AT, direction: DESC }) {
+          nodes {
+            number
+            title
+            body
+            state
+            url
+            author { login }
+            labels(first: 10) { nodes { name } }
+            createdAt
+            closedAt
+            timelineItems(itemTypes: [CLOSED_EVENT], first: 1) {
+              nodes {
+                ... on ClosedEvent {
+                  closer {
+                    __typename
+                    ... on PullRequest {
+                      number
+                      title
+                      body
+                      state
+                      mergedAt
+                      mergeCommit { oid }
+                      baseRefName
+                      headRefName
+                      additions
+                      deletions
+                      changedFiles
+                      url
+                      author { login }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  try {
+    const result = execSync(
+      `gh api graphql -f query='${query.replace(/'/g, "\\'")}' ` +
+        `-f owner='${repo.owner}' -f name='${repo.name}' -F first=${limit}`,
+      { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 }
+    );
+
+    const data = JSON.parse(result);
+    const issues = data.data.repository.issues.nodes;
+    const results: IssueWithClosingPR[] = [];
+
+    for (const issue of issues) {
+      // Get the closing event
+      const closedEvent = issue.timelineItems?.nodes?.[0];
+      if (!closedEvent?.closer) continue;
+
+      // Check if closer is a PullRequest (not a Commit or manual close)
+      if (closedEvent.closer.__typename !== 'PullRequest') continue;
+
+      const pr = closedEvent.closer as GitHubPR;
+
+      // Only include merged PRs
+      if (!pr.mergedAt) continue;
+
+      // Filter by date if specified
+      if (since && new Date(pr.mergedAt) < since) continue;
+
+      // Build the GitHubIssue object
+      const githubIssue: GitHubIssue = {
+        number: issue.number,
+        title: issue.title,
+        body: issue.body,
+        state: issue.state,
+        url: issue.url,
+        author: issue.author,
+        labels: issue.labels,
+        createdAt: issue.createdAt,
+        closedAt: issue.closedAt,
+      };
+
+      // Build the GitHubPR object with empty closingIssuesReferences
+      // (we don't need it since we already have the issue)
+      const githubPR: GitHubPR = {
+        ...pr,
+        closingIssuesReferences: { nodes: [] },
+      };
+
+      results.push({ issue: githubIssue, closingPR: githubPR });
+    }
+
+    return results;
+  } catch (error) {
+    throw new Error(`Failed to fetch closed issues: ${(error as Error).message}`);
+  }
+}
+
+/**
+ * Fetch merged PRs with their linked issues using gh CLI (PR-centric approach)
+ *
+ * This only finds PRs that use explicit closing keywords like "Closes #X".
+ * Used as a fallback/supplement to the issue-centric approach.
  */
 async function fetchMergedPRsWithIssues(
   repo: RepoInfo,
