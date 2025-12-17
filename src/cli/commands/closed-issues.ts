@@ -21,6 +21,14 @@ import {
   RunCaseResult,
 } from '../../closed-issues';
 import { getDefaultCasesDir, loadCases } from '../../cases/loader';
+import { Case } from '../../cases/types';
+
+/**
+ * Type guard to validate a Case is a properly formed ClosedIssueCase
+ */
+function isClosedIssueCase(c: Case): c is ClosedIssueCase {
+  return c.source === 'closed_issue' && 'closedIssue' in c && 'referenceSolution' in c;
+}
 import { loadVariants, findVariantByName, resolveVariantId } from '../../variants/store';
 import { Variant } from '../../variants/types';
 import { getActiveVariant } from './variant';
@@ -347,7 +355,8 @@ export async function closedIssuesRunCommand(options: RunCommandOptions) {
       loadOptions.ids = [options.case];
     }
 
-    const cases = await loadCases(closedIssuesDir, loadOptions);
+    const allCases = await loadCases(closedIssuesDir, loadOptions);
+    const cases = allCases.filter(isClosedIssueCase);
 
     if (cases.length === 0) {
       spinner.fail('No cases to run');
@@ -409,7 +418,7 @@ export async function closedIssuesRunCommand(options: RunCommandOptions) {
     const results: RunCaseResult[] = [];
 
     for (let i = 0; i < cases.length; i++) {
-      const c = cases[i] as ClosedIssueCase;
+      const c = cases[i];
 
       if (!options.json) {
         console.log(`${chalk.dim(`[${i + 1}/${cases.length}]`)} ${chalk.cyan(c.id)}`);
