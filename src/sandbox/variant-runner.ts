@@ -327,8 +327,8 @@ function buildDockerArgs(
   // Set HOME to /tmp so Claude Code can write its config/debug files
   args.push('-e', 'HOME=/tmp');
 
-  // Mount project directory read-only
-  args.push('-v', `${projectRoot}:/workspace:ro`);
+  // Mount project directory (read-write so agent can make changes)
+  args.push('-v', `${projectRoot}:/workspace`);
 
   // Pass all resolved environment variables
   for (const [key, value] of Object.entries(env)) {
