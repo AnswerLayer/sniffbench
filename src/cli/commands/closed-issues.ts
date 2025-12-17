@@ -594,6 +594,7 @@ async function saveClosedIssuesRun(
       behaviorMetrics: result.tokens ? {
         totalTokens: result.tokens.totalTokens,
         inputTokens: result.tokens.inputTokens,
+        outputTokens: result.tokens.outputTokens,
         cacheReadTokens: result.tokens.cacheReadTokens,
         cacheWriteTokens: result.tokens.cacheWriteTokens,
         costUsd: result.costUsd || 0,

@@ -31,6 +31,7 @@ export function defaultBehaviorMetrics(): BehaviorMetrics {
     tokensPerRead: 0,
     readCount: 0,
     inputTokens: 0,
+    outputTokens: 0,
     cacheReadTokens: 0,
     cacheWriteTokens: 0,
   };

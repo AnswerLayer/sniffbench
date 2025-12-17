@@ -20,6 +20,7 @@ export interface BehaviorMetrics {
   tokensPerRead: number;
   readCount: number;
   inputTokens: number;
+  outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
 }

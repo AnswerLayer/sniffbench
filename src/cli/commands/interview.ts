@@ -1130,7 +1130,7 @@ export async function interviewCommand(options: InterviewOptions) {
               gradedAt: baseline.gradedAt,
               gradedBy: baseline.gradedBy,
               notes: baseline.notes,
-              behaviorMetrics: baseline.behaviorMetrics || defaultBehaviorMetrics(),
+              behaviorMetrics: { ...defaultBehaviorMetrics(), ...baseline.behaviorMetrics },
             };
             currentRun.cases[caseData.id] = caseRun;
 
