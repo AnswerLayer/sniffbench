@@ -56,7 +56,6 @@ export async function compareSolutions(
   const diffSimilarity = await calculateDiffSimilarityInSandbox(
     sandbox,
     workdir,
-    agentFiles,
     referenceSolution.diff
   );
 
@@ -211,12 +210,11 @@ async function runLint(
 async function calculateDiffSimilarityInSandbox(
   sandbox: Sandbox,
   workdir: string,
-  agentFiles: string[],
   referenceDiff: string
 ): Promise<number> {
   try {
     // Generate diff of agent's changes
-    const result = await sandbox.exec('git diff HEAD', { timeoutSeconds: 30 });
+    const result = await sandbox.exec('git diff HEAD', { timeoutSeconds: 30, cwd: workdir });
 
     if (result.exitCode !== 0) {
       // If git diff fails, fall back to file content comparison
