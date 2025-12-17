@@ -123,8 +123,8 @@ export interface ClosedIssueComparisonDetails {
  * Comparison result for closed-issue runs
  */
 export interface ClosedIssueComparison {
-  /** Whether tests pass (if available) */
-  functionalMatch: boolean;
+  /** Whether tests pass (undefined if no tests available) */
+  functionalMatch: boolean | undefined;
   /** Similarity score between diffs (0-1) */
   diffSimilarity: number;
   /** Overlap in files modified (0-1) */

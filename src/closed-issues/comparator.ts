@@ -154,9 +154,9 @@ function calculateFileOverlap(
 async function runTests(
   sandbox: Sandbox,
   testCommand?: string
-): Promise<{ functionalMatch: boolean; testOutput?: string }> {
+): Promise<{ functionalMatch: boolean | undefined; testOutput?: string }> {
   if (!testCommand) {
-    return { functionalMatch: true, testOutput: 'No test command available' };
+    return { functionalMatch: undefined };
   }
 
   try {
@@ -314,7 +314,7 @@ function levenshteinDistance(s1: string, s2: string): number {
  * Calculate overall weighted score
  */
 function calculateOverallScore(metrics: {
-  functionalMatch: boolean;
+  functionalMatch: boolean | undefined;
   diffSimilarity: number;
   scopeMatch: number;
   styleScore: number;
@@ -327,8 +327,11 @@ function calculateOverallScore(metrics: {
     style: 10,
   };
 
+  // Only award functional points if tests actually ran
+  const functionalScore = metrics.functionalMatch === true ? weights.functional : 0;
+
   const score =
-    (metrics.functionalMatch ? 1 : 0) * weights.functional +
+    functionalScore +
     metrics.diffSimilarity * weights.similarity +
     metrics.scopeMatch * weights.scope +
     metrics.styleScore * weights.style;

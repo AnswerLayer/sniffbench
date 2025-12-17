@@ -261,8 +261,8 @@ export interface GitHubIssue {
  * Result from comparing agent solution to reference
  */
 export interface ComparisonResult {
-  /** Whether tests pass (if available) */
-  functionalMatch: boolean;
+  /** Whether tests pass (undefined if no tests available) */
+  functionalMatch: boolean | undefined;
 
   /** Similarity score between diffs (0-1) */
   diffSimilarity: number;
