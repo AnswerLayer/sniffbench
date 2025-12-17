@@ -490,7 +490,16 @@ function detectTestCommand(repoPath: string, filesChanged: string[]): string | u
     }
   }
 
-  return hasTestFiles ? undefined : undefined;
+  // Fallback: if test files exist, try to infer command from file types
+  if (hasTestFiles) {
+    const hasPythonTests = filesChanged.some((f) => f.includes('test') && f.endsWith('.py'));
+    const hasJsTests = filesChanged.some((f) => f.includes('test') && (f.endsWith('.js') || f.endsWith('.ts')));
+
+    if (hasPythonTests) return 'pytest';
+    if (hasJsTests) return 'npm test';
+  }
+
+  return undefined;
 }
 
 /**
