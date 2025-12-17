@@ -436,9 +436,8 @@ function compareToReference(
   // Calculate diff similarity
   const diffSimilarity = calculateDiffSimilarity(agentDiff, reference.diff);
 
-  // For now, we assume tests pass if there's reasonable similarity
-  // Full test running would require setting up the environment
-  const functionalMatch = diffSimilarity > 0.7;
+  // No tests are run in this code path - return undefined to be honest
+  const functionalMatch = undefined;
 
   // Style score based on whether files match
   const styleScore = scopeMatch;
@@ -500,7 +499,7 @@ function calculateFileOverlap(
  * Calculate overall weighted score
  */
 function calculateOverallScore(metrics: {
-  functionalMatch: boolean;
+  functionalMatch: boolean | undefined;
   diffSimilarity: number;
   scopeMatch: number;
   styleScore: number;
@@ -513,8 +512,11 @@ function calculateOverallScore(metrics: {
     style: 10,
   };
 
+  // Only award functional points if tests actually ran and passed
+  const functionalScore = metrics.functionalMatch === true ? weights.functional : 0;
+
   const score =
-    (metrics.functionalMatch ? 1 : 0) * weights.functional +
+    functionalScore +
     metrics.diffSimilarity * weights.similarity +
     metrics.scopeMatch * weights.scope +
     metrics.styleScore * weights.style;
