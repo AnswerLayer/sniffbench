@@ -18,6 +18,7 @@ export type {
   GitHubIssue,
   ComparisonResult,
   ComparisonDetails,
+  PRReviewComment,
 } from './types';
 
 // Scanner

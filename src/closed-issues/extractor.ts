@@ -16,6 +16,7 @@ import {
   ClosedIssueSummary,
   GitHubPR,
   GitHubIssue,
+  PRReviewComment,
 } from './types';
 import { CaseDifficulty } from '../cases/types';
 import { isTestFile } from './scanner';
@@ -60,6 +61,9 @@ export async function extractCase(
   const testCommand = detectTestCommand(repoPath, filesChanged);
   const lintCommand = detectLintCommand(repoPath);
 
+  // Fetch PR review comments for use as evaluation checks
+  const reviewComments = await fetchPRReviewComments(parsed.owner, parsed.repo, pr.number);
+
   // Detect language
   const language = detectLanguageFromFiles(filesChanged);
 
@@ -87,6 +91,7 @@ export async function extractCase(
     deletions: pr.deletions,
     testCommand,
     lintCommand,
+    reviewComments: reviewComments.length > 0 ? reviewComments : undefined,
   };
 
   const caseData: ClosedIssueCase = {
@@ -374,6 +379,76 @@ async function getPRFiles(owner: string, repo: string, prNumber: number): Promis
   );
 
   return result.trim().split('\n').filter(Boolean);
+}
+
+/**
+ * Fetch PR review comments
+ *
+ * Gets both review comments (on specific lines) and general PR comments.
+ * These can be used as evaluation checks to verify the agent addresses
+ * the same concerns that reviewers raised.
+ */
+async function fetchPRReviewComments(
+  owner: string,
+  repo: string,
+  prNumber: number
+): Promise<PRReviewComment[]> {
+  const comments: PRReviewComment[] = [];
+
+  try {
+    // Fetch review comments (comments on specific lines of code)
+    const reviewResult = execSync(
+      `gh api repos/${owner}/${repo}/pulls/${prNumber}/comments --jq '.[] | {body, path, line, author: .user.login}'`,
+      { encoding: 'utf-8', maxBuffer: 5 * 1024 * 1024 }
+    );
+
+    for (const line of reviewResult.trim().split('\n').filter(Boolean)) {
+      try {
+        const comment = JSON.parse(line);
+        if (comment.body && comment.path) {
+          comments.push({
+            body: comment.body,
+            path: comment.path,
+            line: comment.line || undefined,
+            author: comment.author || 'unknown',
+            isReview: true,
+          });
+        }
+      } catch {
+        // Skip malformed lines
+      }
+    }
+  } catch {
+    // Ignore errors fetching review comments
+  }
+
+  try {
+    // Fetch general PR comments (issue-style comments, not on specific lines)
+    const issueResult = execSync(
+      `gh api repos/${owner}/${repo}/issues/${prNumber}/comments --jq '.[] | {body, author: .user.login}'`,
+      { encoding: 'utf-8', maxBuffer: 5 * 1024 * 1024 }
+    );
+
+    for (const line of issueResult.trim().split('\n').filter(Boolean)) {
+      try {
+        const comment = JSON.parse(line);
+        if (comment.body) {
+          comments.push({
+            body: comment.body,
+            path: '', // General comments don't have a path
+            author: comment.author || 'unknown',
+            isReview: false,
+          });
+        }
+      } catch {
+        // Skip malformed lines
+      }
+    }
+  } catch {
+    // Ignore errors fetching issue comments
+  }
+
+  return comments;
 }
 
 /**

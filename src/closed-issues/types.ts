@@ -47,6 +47,26 @@ export interface ClosedIssueSource {
 }
 
 /**
+ * A review comment from the PR
+ */
+export interface PRReviewComment {
+  /** Comment body/text */
+  body: string;
+
+  /** File path the comment is on */
+  path: string;
+
+  /** Line number in the diff */
+  line?: number;
+
+  /** Author of the comment */
+  author: string;
+
+  /** Whether this was from a code review (vs general comment) */
+  isReview: boolean;
+}
+
+/**
  * Reference solution extracted from the actual PR
  */
 export interface ReferenceSolution {
@@ -67,6 +87,9 @@ export interface ReferenceSolution {
 
   /** Lint command to run (if detected) */
   lintCommand?: string;
+
+  /** Review comments from the PR - can be used as evaluation checks */
+  reviewComments?: PRReviewComment[];
 }
 
 /**
