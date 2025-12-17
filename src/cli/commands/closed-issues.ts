@@ -481,7 +481,7 @@ function displayResultSummary(result: RunCaseResult) {
   const comp = result.comparison;
 
   console.log(`    ${chalk.bold('Results:')}`);
-  console.log(`      ${chalk.dim('Overall Score:')} ${getScoreColor(comp.overallScore)}${comp.overallScore}/100${chalk.reset()}`);
+  console.log(`      ${chalk.dim('Overall Score:')} ${getScoreColor(comp.overallScore)(`${comp.overallScore}/100`)}`);
   console.log(`      ${chalk.dim('Diff Similarity:')} ${(comp.diffSimilarity * 100).toFixed(1)}%`);
   console.log(`      ${chalk.dim('Scope Match:')} ${(comp.scopeMatch * 100).toFixed(1)}%`);
   console.log(`      ${chalk.dim('Files Changed:')} ${result.filesChanged.length}`);
@@ -622,12 +622,12 @@ async function saveClosedIssuesRun(
 }
 
 /**
- * Get color based on score
+ * Get color function based on score
  */
-function getScoreColor(score: number): string {
-  if (score >= 80) return chalk.green('');
-  if (score >= 60) return chalk.yellow('');
-  return chalk.red('');
+function getScoreColor(score: number): (text: string) => string {
+  if (score >= 80) return chalk.green;
+  if (score >= 60) return chalk.yellow;
+  return chalk.red;
 }
 
 /**
