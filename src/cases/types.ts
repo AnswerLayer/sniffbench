@@ -32,7 +32,7 @@ export interface CaseFile {
 /**
  * Source/origin of a case
  */
-export type CaseSource = 'bootstrap' | 'generated' | 'manual' | 'imported';
+export type CaseSource = 'bootstrap' | 'generated' | 'manual' | 'imported' | 'closed_issue';
 
 /**
  * Difficulty level

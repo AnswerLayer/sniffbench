@@ -58,6 +58,7 @@ export function computeBehaviorMetrics(result: AgentResult): BehaviorMetrics {
     tokensPerRead: Math.round(tokensPerRead),
     readCount,
     inputTokens: tokens.inputTokens,
+    outputTokens: tokens.outputTokens,
     cacheReadTokens: tokens.cacheReadTokens,
     cacheWriteTokens: tokens.cacheWriteTokens,
   };

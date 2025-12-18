@@ -141,6 +141,20 @@ sniff cases categories               # List categories
 sniff cases languages                # List languages
 ```
 
+### Closed Issues (NEW)
+
+Use real closed issues from your repository as evaluation cases:
+
+```bash
+sniff closed-issues scan             # Find suitable closed issues
+sniff closed-issues scan --all       # Include excluded issues with reasons
+sniff closed-issues add owner/repo#123  # Add specific issue as a case
+sniff closed-issues add #123         # Add from current repo
+sniff closed-issues list             # List extracted cases
+sniff closed-issues run              # Run agent on closed issues
+sniff closed-issues run --case <id>  # Run specific case
+```
+
 ### Utilities
 
 ```bash
@@ -261,7 +275,7 @@ All data is stored in `.sniffbench/` in your project root:
 |------|-------------|--------|
 | **Comprehension** | Questions about codebase architecture | ✅ Ready |
 | **Bootstrap** | Common tasks (fix linting, rename symbols) | 🚧 In Progress |
-| **Closed Issues** | Real issues from your repo's history | 🚧 Planned |
+| **Closed Issues** | Real issues from your repo's history | ✅ Ready |
 
 ## What We Measure
 

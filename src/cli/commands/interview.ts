@@ -147,6 +147,7 @@ interface Baseline {
     tokensPerRead: number;
     readCount: number;
     inputTokens: number;
+    outputTokens: number;
     cacheReadTokens: number;
     cacheWriteTokens: number;
   };
@@ -1130,7 +1131,7 @@ export async function interviewCommand(options: InterviewOptions) {
               gradedAt: baseline.gradedAt,
               gradedBy: baseline.gradedBy,
               notes: baseline.notes,
-              behaviorMetrics: baseline.behaviorMetrics || defaultBehaviorMetrics(),
+              behaviorMetrics: { ...defaultBehaviorMetrics(), ...baseline.behaviorMetrics },
             };
             currentRun.cases[caseData.id] = caseRun;
 

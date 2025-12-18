@@ -20,6 +20,7 @@ export interface BehaviorMetrics {
   tokensPerRead: number;
   readCount: number;
   inputTokens: number;
+  outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
 }
@@ -103,6 +104,67 @@ export interface CaseRun {
 }
 
 /**
+ * Comparison details for closed-issue runs
+ */
+export interface ClosedIssueComparisonDetails {
+  /** Files in reference but not in agent solution */
+  missingFiles: string[];
+  /** Files in agent solution but not in reference */
+  extraFiles: string[];
+  /** Files modified in both */
+  matchingFiles: string[];
+  /** Test output if available */
+  testOutput?: string;
+  /** Lint output if available */
+  lintOutput?: string;
+}
+
+/**
+ * Comparison result for closed-issue runs
+ */
+export interface ClosedIssueComparison {
+  /** Whether tests pass (undefined if no tests available) */
+  functionalMatch: boolean | undefined;
+  /** Similarity score between diffs (0-1) */
+  diffSimilarity: number;
+  /** Overlap in files modified (0-1) */
+  scopeMatch: number;
+  /** Whether linting passes (0-1) */
+  styleScore: number;
+  /** Overall weighted score (0-100) */
+  overallScore: number;
+  /** Detailed breakdown */
+  details: ClosedIssueComparisonDetails;
+}
+
+/**
+ * Result of running a closed-issue case
+ */
+export interface ClosedIssueCaseRun {
+  /** Whether the run was successful */
+  success: boolean;
+  /** Error message if run failed */
+  error?: string;
+  /** Duration in milliseconds */
+  durationMs: number;
+  /** Files changed by the agent */
+  filesChanged: string[];
+  /** The diff produced by the agent */
+  agentDiff: string;
+  /** Comparison result against reference solution */
+  comparison: ClosedIssueComparison;
+  /** Agent output/response */
+  agentOutput?: string;
+  /** Behavior metrics (tokens, cost) */
+  behaviorMetrics?: Partial<BehaviorMetrics>;
+}
+
+/**
+ * Run type discriminator
+ */
+export type RunType = 'interview' | 'closed-issues';
+
+/**
  * A complete run - one interview session with all cases
  */
 export interface Run {
@@ -110,12 +172,16 @@ export interface Run {
   id: string;
   /** Optional human-readable label (e.g., "baseline", "after-tuning") */
   label?: string;
+  /** Run type: 'interview' or 'closed-issues' */
+  type?: RunType;
   /** ISO timestamp when run was created */
   createdAt: string;
   /** Agent configuration at time of run */
   agent: AgentConfig;
-  /** Results per case: key is caseId */
+  /** Results per case: key is caseId (for interview runs) */
   cases: Record<string, CaseRun>;
+  /** Results per case: key is caseId (for closed-issues runs) */
+  closedIssueCases?: Record<string, ClosedIssueCaseRun>;
 }
 
 /**
