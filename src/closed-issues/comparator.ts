@@ -182,7 +182,8 @@ async function runLint(
   lintCommand?: string
 ): Promise<{ styleScore: number; lintOutput?: string }> {
   if (!lintCommand) {
-    return { styleScore: 1, lintOutput: 'No lint command available' };
+    // No lint rules configured - assume pass (no rules to violate)
+    return { styleScore: 1 };
   }
 
   try {

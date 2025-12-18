@@ -458,8 +458,8 @@ function compareToReference(
   // No tests are run in this code path - return undefined to be honest
   const functionalMatch = undefined;
 
-  // Style score based on whether files match
-  const styleScore = scopeMatch;
+  // No linting configured - assume pass (no rules to violate)
+  const styleScore = 1;
 
   // Calculate overall score
   const overallScore = calculateOverallScore({
