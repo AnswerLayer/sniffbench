@@ -3,7 +3,7 @@
  */
 
 import chalk from 'chalk';
-import { box } from '../../utils/ui';
+import { box, padVisible } from '../../utils/ui';
 import {
   loadRuns,
   getRun,
@@ -199,8 +199,8 @@ export async function compareCommand(run1Id: string, run2Id: string) {
     const costDelta = formatMetricDelta(cost1, cost2, true);
 
     console.log(
-      `  ${caseId.padEnd(22)} ${result1Display.padEnd(9)} ${result2Display.padEnd(9)} ` +
-      `${tokens1.toLocaleString().padStart(6)} → ${tokens2.toLocaleString().padEnd(6)} ${tokenDelta.padEnd(12)} ` +
+      `  ${caseId.padEnd(22)} ${padVisible(result1Display, 9)} ${padVisible(result2Display, 9)} ` +
+      `${tokens1.toLocaleString().padStart(6)} → ${tokens2.toLocaleString().padEnd(6)} ${padVisible(tokenDelta, 12)} ` +
       `$${cost1.toFixed(4)} → $${cost2.toFixed(4)} ${costDelta}`
     );
 
