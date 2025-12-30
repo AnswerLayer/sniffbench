@@ -34,3 +34,7 @@ Instead of using Glob or Grep, do this:
 osgrep uses semantic search (embeddings) to find conceptually related code, not just text matches. It's more effective for understanding unfamiliar codebases.
 
 **Start your exploration with osgrep before using other tools.**
+
+## Git Workflow Preferences
+
+**NEVER amend commits.** Always create new commits to preserve history. Even for small fixes or PR feedback, create a separate commit rather than using `git commit --amend`.

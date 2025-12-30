@@ -132,9 +132,9 @@ interface Baseline {
   caseId: string;
   question: string;
   answer: string;
-  grade: number;
-  gradedAt: string;
-  gradedBy: string;
+  result?: boolean;
+  resultAt?: string;
+  resultBy?: string;
   notes?: string;
   behaviorMetrics?: {
     totalTokens: number;
@@ -256,7 +256,7 @@ function displayMetricsComparison(
 interface ComparisonResult {
   caseId: string;
   title: string;
-  baselineGrade: number;
+  baselineResult?: boolean;
   baselineAnswer: string;
   newAnswer: string;
   baselineMetrics?: Baseline['behaviorMetrics'];
@@ -327,31 +327,22 @@ async function ask(rl: readline.Interface, question: string, timeoutMs: number =
 }
 
 /**
- * Ask user for a grade (1-10)
+ * Ask user for pass/fail result
  */
-async function askGrade(rl: readline.Interface): Promise<number> {
+async function askResult(rl: readline.Interface): Promise<boolean> {
   while (true) {
-    const input = await ask(rl, chalk.cyan('\n  Grade this answer (1-10): '));
+    const input = await ask(rl, chalk.cyan('\n  Did the agent pass? (y/n): '));
+    const lower = input.toLowerCase();
 
-    const grade = parseInt(input, 10);
-    if (grade >= 1 && grade <= 10) {
-      return grade;
+    if (lower === 'y' || lower === 'yes') {
+      return true;
+    }
+    if (lower === 'n' || lower === 'no') {
+      return false;
     }
 
-    console.log(chalk.yellow('  Please enter a number between 1 and 10'));
+    console.log(chalk.yellow('  Please enter y (pass) or n (fail)'));
   }
-}
-
-/**
- * Display the grading scale
- */
-function showGradingScale(): void {
-  console.log(chalk.dim('\n  Grading scale:'));
-  console.log(chalk.dim('    1-3: Poor - Missing key information, incorrect, or confused'));
-  console.log(chalk.dim('    4-5: Fair - Partially correct but incomplete or has errors'));
-  console.log(chalk.dim('    6-7: Good - Mostly correct with minor gaps'));
-  console.log(chalk.dim('    8-9: Great - Thorough and accurate'));
-  console.log(chalk.dim('    10:  Perfect - Comprehensive, insightful, expert-level'));
 }
 
 /**
@@ -466,18 +457,24 @@ async function runInterviewQuestion(
   store: BaselineStore,
   projectRoot: string,
   activeVariant?: Variant | null
-): Promise<{ grade: number; skipped: boolean; durationMs?: number; model?: string; rl: readline.Interface }> {
+): Promise<{ result?: boolean; skipped: boolean; durationMs?: number; model?: string; rl: readline.Interface }> {
   const existingBaseline = store.baselines[caseData.id];
 
   // Show the question
   console.log(box(caseData.prompt, `Question: ${caseData.title}`));
 
   if (existingBaseline) {
-    console.log(chalk.dim(`  Baseline exists (grade: ${existingBaseline.grade}/10, graded: ${existingBaseline.gradedAt.split('T')[0]})`));
-    const regrade = await ask(rl, chalk.cyan('  Re-run and re-grade? (y/N): '));
+    const resultDisplay = existingBaseline.result === undefined
+      ? chalk.yellow('• Unevaluated')
+      : existingBaseline.result
+        ? chalk.green('✓ Pass')
+        : chalk.red('✗ Fail');
+    const dateDisplay = existingBaseline.resultAt ? existingBaseline.resultAt.split('T')[0] : 'unknown';
+    console.log(chalk.dim(`  Baseline exists (${resultDisplay}${chalk.dim(`, evaluated: ${dateDisplay})`)})`));
+    const rerun = await ask(rl, chalk.cyan('  Re-run and re-evaluate? (y/N): '));
 
-    if (regrade.toLowerCase() !== 'y') {
-      return { grade: existingBaseline.grade, skipped: true, rl };
+    if (rerun.toLowerCase() !== 'y') {
+      return { result: existingBaseline.result, skipped: true, rl };
     }
   }
 
@@ -609,12 +606,12 @@ async function runInterviewQuestion(
     if (result.timedOut) {
       console.log(chalk.yellow(`\n  ✗ ${agent.displayName} timed out after ${durationSec}s`));
       console.log(chalk.yellow('  The agent took too long. Consider increasing the timeout.'));
-      return { grade: 0, skipped: true, durationMs: result.durationMs, rl };
+      return { result: undefined, skipped: true, durationMs: result.durationMs, rl };
     }
 
     if (!result.success) {
       console.log(chalk.red(`\n  ✗ ${agent.displayName} failed: ${result.error}`));
-      return { grade: 0, skipped: true, durationMs: result.durationMs, rl };
+      return { result: undefined, skipped: true, durationMs: result.durationMs, rl };
     }
 
     console.log(chalk.green(`\n  ✓ ${agent.displayName} completed in ${durationSec}s`) + chalk.dim(` (${result.model})`));
@@ -640,9 +637,8 @@ async function runInterviewQuestion(
       process.stdin.resume();
     }
 
-    // Show grading scale and ask for grade
-    showGradingScale();
-    const grade = await askGrade(rl);
+    // Ask for pass/fail result
+    const resultValue = await askResult(rl);
 
     // Optional notes
     const notes = await ask(rl, chalk.dim('  Notes (optional, press Enter to skip): '));
@@ -652,22 +648,23 @@ async function runInterviewQuestion(
       caseId: caseData.id,
       question: caseData.prompt,
       answer: result.answer,
-      grade,
-      gradedAt: new Date().toISOString(),
-      gradedBy: 'human',
+      result: resultValue,
+      resultAt: new Date().toISOString(),
+      resultBy: 'human',
       notes: notes || undefined,
       behaviorMetrics,
     };
 
     saveBaselines(projectRoot, store);
 
-    console.log(chalk.green(`\n  ✓ Baseline saved (${grade}/10)`));
+    const resultDisplay = resultValue ? chalk.green('✓ Pass') : chalk.red('✗ Fail');
+    console.log(chalk.green(`\n  ✓ Baseline saved (${resultDisplay})`));
 
-    return { grade, skipped: false, durationMs: result.durationMs, model: result.model, rl };
+    return { result: resultValue, skipped: false, durationMs: result.durationMs, model: result.model, rl };
   } catch (err) {
     exploration.stop();
     console.log(chalk.red(`\n  ✗ Failed: ${(err as Error).message}`));
-    return { grade: 0, skipped: true, rl };
+    return { result: undefined, skipped: true, rl };
   }
 }
 
@@ -683,7 +680,9 @@ async function runComparisonCase(
 ): Promise<ComparisonResult> {
   // Show the question
   console.log(box(caseData.prompt, `Question: ${caseData.title}`));
-  console.log(chalk.dim(`  Baseline grade: ${baseline.grade}/10 (graded: ${baseline.gradedAt.split('T')[0]})`));
+  const resultDisplay = baseline.result ? chalk.green('✓ Pass') : chalk.red('✗ Fail');
+  const dateDisplay = baseline.resultAt ? baseline.resultAt.split('T')[0] : 'unknown';
+  console.log(chalk.dim(`  Baseline: ${resultDisplay} ${chalk.dim(`(evaluated: ${dateDisplay})`)}`));
 
   // Get agent's response with animated spinner
   console.log('');
@@ -762,7 +761,7 @@ async function runComparisonCase(
       return {
         caseId: caseData.id,
         title: caseData.title,
-        baselineGrade: baseline.grade,
+        baselineResult: baseline.result,
         baselineAnswer: baseline.answer,
         newAnswer: '',
         baselineMetrics: baseline.behaviorMetrics,
@@ -776,7 +775,7 @@ async function runComparisonCase(
       return {
         caseId: caseData.id,
         title: caseData.title,
-        baselineGrade: baseline.grade,
+        baselineResult: baseline.result,
         baselineAnswer: baseline.answer,
         newAnswer: '',
         baselineMetrics: baseline.behaviorMetrics,
@@ -794,7 +793,7 @@ async function runComparisonCase(
     return {
       caseId: caseData.id,
       title: caseData.title,
-      baselineGrade: baseline.grade,
+      baselineResult: baseline.result,
       baselineAnswer: baseline.answer,
       newAnswer: result.answer,
       baselineMetrics: baseline.behaviorMetrics,
@@ -809,7 +808,7 @@ async function runComparisonCase(
     return {
       caseId: caseData.id,
       title: caseData.title,
-      baselineGrade: baseline.grade,
+      baselineResult: baseline.result,
       baselineAnswer: baseline.answer,
       newAnswer: '',
       baselineMetrics: baseline.behaviorMetrics,
@@ -1050,8 +1049,8 @@ export async function interviewCommand(options: InterviewOptions) {
   for (const c of casesToRun) {
     const hasBaseline = store.baselines[c.id];
     const status = hasBaseline
-      ? chalk.green(`✓ ${hasBaseline.grade}/10`)
-      : chalk.dim('○ not graded');
+      ? (hasBaseline.result ? chalk.green('✓ Pass') : chalk.red('✗ Fail'))
+      : chalk.dim('○ not evaluated');
     console.log(`  ${status}  ${chalk.bold(c.id)}: ${c.title}`);
   }
 
@@ -1103,7 +1102,7 @@ export async function interviewCommand(options: InterviewOptions) {
 
     } else {
       // Normal interview mode
-      const results: { caseId: string; grade: number; skipped: boolean; model?: string }[] = [];
+      const results: { caseId: string; result?: boolean; skipped: boolean; model?: string }[] = [];
 
       for (let i = 0; i < casesToRun.length; i++) {
         const caseData = casesToRun[i];
@@ -1111,33 +1110,33 @@ export async function interviewCommand(options: InterviewOptions) {
         console.log(chalk.bold(`\n  [${i + 1}/${casesToRun.length}] ${caseData.title}`));
         console.log(chalk.dim(`  Difficulty: ${caseData.difficulty}\n`));
 
-        const result = await runInterviewQuestion(caseData, agent, rl, store, projectRoot, activeVariant);
+        const questionResult = await runInterviewQuestion(caseData, agent, rl, store, projectRoot, activeVariant);
         // Update rl in case it was recreated after agent run
-        rl = result.rl;
+        rl = questionResult.rl;
         results.push({
           caseId: caseData.id,
-          grade: result.grade,
-          skipped: result.skipped,
-          model: result.model,
+          result: questionResult.result,
+          skipped: questionResult.skipped,
+          model: questionResult.model,
         });
 
         // Copy baseline to run if case wasn't skipped
-        if (!result.skipped) {
+        if (!questionResult.skipped) {
           const baseline = store.baselines[caseData.id];
           if (baseline) {
             const caseRun: CaseRun = {
               answer: baseline.answer,
-              grade: baseline.grade,
-              gradedAt: baseline.gradedAt,
-              gradedBy: baseline.gradedBy,
+              result: baseline.result,
+              resultAt: baseline.resultAt,
+              resultBy: baseline.resultBy,
               notes: baseline.notes,
               behaviorMetrics: { ...defaultBehaviorMetrics(), ...baseline.behaviorMetrics },
             };
             currentRun.cases[caseData.id] = caseRun;
 
             // Update model from first case result
-            if (result.model && currentRun.agent.model === 'unknown') {
-              currentRun.agent.model = result.model;
+            if (questionResult.model && currentRun.agent.model === 'unknown') {
+              currentRun.agent.model = questionResult.model;
             }
           }
         }
@@ -1163,13 +1162,15 @@ export async function interviewCommand(options: InterviewOptions) {
       console.log(chalk.dim('\n  ═══════════════════════════════════════════════════\n'));
 
       const completed = results.filter(r => !r.skipped);
-      const totalGrade = completed.reduce((sum, r) => sum + r.grade, 0);
-      const avgGrade = completed.length > 0 ? (totalGrade / completed.length).toFixed(1) : 'N/A';
+      const passCount = completed.filter(r => r.result === true).length;
+      const passRate = completed.length > 0
+        ? `${Math.round(passCount / completed.length * 100)}%`
+        : 'N/A';
 
       const summaryLines = [
         chalk.bold('Interview Summary\n'),
         `Questions answered: ${completed.length}/${results.length}`,
-        `Average grade: ${avgGrade}/10`,
+        `Pass rate: ${passRate}`,
         '',
       ];
 
