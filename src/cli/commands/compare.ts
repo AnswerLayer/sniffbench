@@ -226,7 +226,11 @@ export async function compareCommand(run1Id: string, run2Id: string) {
 
   console.log(`  Cases compared: ${commonCases.length}`);
   if (resultCount > 0) {
-    console.log(`  Pass rate: ${passRate1}% → ${passRate2}% ${formatMetricDelta(passRate1!, passRate2!, false)}`);
+    const passRateDelta = passRate2! - passRate1!;
+    const deltaSign = passRateDelta >= 0 ? '+' : '';
+    const deltaColor = passRateDelta > 0 ? chalk.green : passRateDelta < 0 ? chalk.red : chalk.dim;
+    const arrow = passRateDelta > 0 ? '↑' : passRateDelta < 0 ? '↓' : '→';
+    console.log(`  Pass rate: ${passRate1}% → ${passRate2}% ${deltaColor(`${arrow} ${deltaSign}${passRateDelta}pp`)}`);
   }
   console.log(`  Total tokens: ${totalTokens1.toLocaleString()} → ${totalTokens2.toLocaleString()} ${formatMetricDelta(totalTokens1, totalTokens2, true)}`);
   console.log(`  Total cost: $${totalCost1.toFixed(4)} → $${totalCost2.toFixed(4)} ${formatMetricDelta(totalCost1, totalCost2, true)}`);
