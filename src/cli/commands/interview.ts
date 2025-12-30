@@ -464,7 +464,11 @@ async function runInterviewQuestion(
   console.log(box(caseData.prompt, `Question: ${caseData.title}`));
 
   if (existingBaseline) {
-    const resultDisplay = existingBaseline.result ? chalk.green('✓ Pass') : chalk.red('✗ Fail');
+    const resultDisplay = existingBaseline.result === undefined
+      ? chalk.yellow('• Unevaluated')
+      : existingBaseline.result
+        ? chalk.green('✓ Pass')
+        : chalk.red('✗ Fail');
     const dateDisplay = existingBaseline.resultAt ? existingBaseline.resultAt.split('T')[0] : 'unknown';
     console.log(chalk.dim(`  Baseline exists (${resultDisplay}${chalk.dim(`, evaluated: ${dateDisplay})`)})`));
     const rerun = await ask(rl, chalk.cyan('  Re-run and re-evaluate? (y/N): '));
