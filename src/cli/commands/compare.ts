@@ -167,7 +167,7 @@ export async function compareCommand(run1Id: string, run2Id: string) {
   }
 
   // Header for case table
-  console.log(chalk.dim('  Case ID                Grade 1   Grade 2   Tokens          Cost'));
+  console.log(chalk.dim('  Case ID                Result 1  Result 2  Tokens          Cost'));
   console.log(chalk.dim('  ' + '─'.repeat(75)));
 
   // Aggregate metrics
@@ -175,16 +175,20 @@ export async function compareCommand(run1Id: string, run2Id: string) {
   let totalTokens2 = 0;
   let totalCost1 = 0;
   let totalCost2 = 0;
-  let totalGrade1 = 0;
-  let totalGrade2 = 0;
-  let gradedCount = 0;
+  let passCount1 = 0;
+  let passCount2 = 0;
+  let resultCount = 0;
 
   for (const caseId of commonCases) {
     const case1 = run1.cases[caseId];
     const case2 = run2.cases[caseId];
 
-    const grade1 = case1.grade !== undefined ? `${case1.grade}/10` : 'N/A';
-    const grade2 = case2.grade !== undefined ? `${case2.grade}/10` : 'N/A';
+    const result1Display = case1.result !== undefined
+      ? (case1.result ? chalk.green('Pass') : chalk.red('Fail'))
+      : chalk.dim('N/A');
+    const result2Display = case2.result !== undefined
+      ? (case2.result ? chalk.green('Pass') : chalk.red('Fail'))
+      : chalk.dim('N/A');
 
     const tokens1 = case1.behaviorMetrics?.totalTokens || 0;
     const tokens2 = case2.behaviorMetrics?.totalTokens || 0;
@@ -195,7 +199,7 @@ export async function compareCommand(run1Id: string, run2Id: string) {
     const costDelta = formatMetricDelta(cost1, cost2, true);
 
     console.log(
-      `  ${caseId.padEnd(22)} ${grade1.padEnd(9)} ${grade2.padEnd(9)} ` +
+      `  ${caseId.padEnd(22)} ${result1Display.padEnd(9)} ${result2Display.padEnd(9)} ` +
       `${tokens1.toLocaleString().padStart(6)} → ${tokens2.toLocaleString().padEnd(6)} ${tokenDelta.padEnd(12)} ` +
       `$${cost1.toFixed(4)} → $${cost2.toFixed(4)} ${costDelta}`
     );
@@ -206,10 +210,10 @@ export async function compareCommand(run1Id: string, run2Id: string) {
     totalCost1 += cost1;
     totalCost2 += cost2;
 
-    if (case1.grade !== undefined && case2.grade !== undefined) {
-      totalGrade1 += case1.grade;
-      totalGrade2 += case2.grade;
-      gradedCount++;
+    if (case1.result !== undefined && case2.result !== undefined) {
+      if (case1.result) passCount1++;
+      if (case2.result) passCount2++;
+      resultCount++;
     }
   }
 
@@ -217,12 +221,12 @@ export async function compareCommand(run1Id: string, run2Id: string) {
   console.log(chalk.dim('\n  ' + '─'.repeat(75)));
   console.log(chalk.bold('\n  Aggregate Summary:\n'));
 
-  const avgGrade1 = gradedCount > 0 ? (totalGrade1 / gradedCount).toFixed(1) : 'N/A';
-  const avgGrade2 = gradedCount > 0 ? (totalGrade2 / gradedCount).toFixed(1) : 'N/A';
+  const passRate1 = resultCount > 0 ? Math.round(passCount1 / resultCount * 100) : null;
+  const passRate2 = resultCount > 0 ? Math.round(passCount2 / resultCount * 100) : null;
 
   console.log(`  Cases compared: ${commonCases.length}`);
-  if (gradedCount > 0) {
-    console.log(`  Average grade: ${avgGrade1} → ${avgGrade2} ${formatMetricDelta(totalGrade1 / gradedCount, totalGrade2 / gradedCount, false)}`);
+  if (resultCount > 0) {
+    console.log(`  Pass rate: ${passRate1}% → ${passRate2}% ${formatMetricDelta(passRate1!, passRate2!, false)}`);
   }
   console.log(`  Total tokens: ${totalTokens1.toLocaleString()} → ${totalTokens2.toLocaleString()} ${formatMetricDelta(totalTokens1, totalTokens2, true)}`);
   console.log(`  Total cost: $${totalCost1.toFixed(4)} → $${totalCost2.toFixed(4)} ${formatMetricDelta(totalCost1, totalCost2, true)}`);

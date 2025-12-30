@@ -76,13 +76,15 @@ export function needsMigration(projectRoot: string): boolean {
 
 /**
  * Convert a legacy baseline to a case run
+ * Note: Old baselines with numeric grades are not supported.
+ * Only baselines with boolean result field will have results.
  */
 function baselineToCaseRun(baseline: LegacyBaseline): CaseRun {
   return {
     answer: baseline.answer,
-    grade: baseline.grade,
-    gradedAt: baseline.gradedAt,
-    gradedBy: baseline.gradedBy,
+    result: baseline.result,
+    resultAt: baseline.resultAt,
+    resultBy: baseline.resultBy,
     notes: baseline.notes,
     behaviorMetrics: baseline.behaviorMetrics || defaultBehaviorMetrics(),
   };
@@ -118,18 +120,18 @@ export function migrateBaselinesV1ToRuns(projectRoot: string): RunStore | null {
     cases[caseId] = baselineToCaseRun(baseline);
   }
 
-  // Use earliest gradedAt as run creation time
-  let earliestGrade = new Date().toISOString();
+  // Use earliest resultAt as run creation time
+  let earliestResult = new Date().toISOString();
   for (const baseline of Object.values(legacyStore.baselines)) {
-    if (baseline.gradedAt && baseline.gradedAt < earliestGrade) {
-      earliestGrade = baseline.gradedAt;
+    if (baseline.resultAt && baseline.resultAt < earliestResult) {
+      earliestResult = baseline.resultAt;
     }
   }
 
   const run: Run = {
     id: runId,
     label: 'baseline-migrated',
-    createdAt: earliestGrade,
+    createdAt: earliestResult,
     agent: {
       name: 'unknown',
       version: null,
@@ -201,9 +203,9 @@ export function getMigrationInfo(projectRoot: string): {
 
   let oldestBaseline: string | undefined;
   for (const baseline of Object.values(legacyStore.baselines)) {
-    if (baseline.gradedAt) {
-      if (!oldestBaseline || baseline.gradedAt < oldestBaseline) {
-        oldestBaseline = baseline.gradedAt;
+    if (baseline.resultAt) {
+      if (!oldestBaseline || baseline.resultAt < oldestBaseline) {
+        oldestBaseline = baseline.resultAt;
       }
     }
   }

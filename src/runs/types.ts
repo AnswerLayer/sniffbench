@@ -91,13 +91,13 @@ export interface AgentConfig {
 export interface CaseRun {
   /** Agent's answer to the case prompt */
   answer: string;
-  /** Human-assigned grade (1-10), if graded */
-  grade?: number;
-  /** ISO timestamp of when grading occurred */
-  gradedAt?: string;
-  /** Who graded (typically "human") */
-  gradedBy?: string;
-  /** Optional notes from grader */
+  /** Pass/fail result from human evaluation */
+  result?: boolean;
+  /** ISO timestamp of when evaluation occurred */
+  resultAt?: string;
+  /** Who evaluated (typically "human") */
+  resultBy?: string;
+  /** Optional notes from evaluator */
   notes?: string;
   /** Behavior metrics from the run */
   behaviorMetrics: BehaviorMetrics;
@@ -200,14 +200,16 @@ export interface RunStore {
 
 /**
  * Legacy baseline format (v1.0) - used for migration
+ * Note: Old baselines with numeric grades are not supported.
+ * Users must delete .sniffbench/baselines.json and re-run interviews.
  */
 export interface LegacyBaseline {
   caseId: string;
   question: string;
   answer: string;
-  grade: number;
-  gradedAt: string;
-  gradedBy: string;
+  result?: boolean;
+  resultAt?: string;
+  resultBy?: string;
   notes?: string;
   behaviorMetrics?: BehaviorMetrics;
 }

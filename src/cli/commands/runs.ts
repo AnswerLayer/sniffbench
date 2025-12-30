@@ -40,9 +40,11 @@ function formatDate(isoDate: string): string {
  */
 function formatRunRow(run: Run, variantName?: string): string {
   const caseCount = Object.keys(run.cases).length;
-  const gradedCount = Object.values(run.cases).filter(c => c.grade !== undefined).length;
-  const avgGrade = gradedCount > 0
-    ? (Object.values(run.cases).reduce((sum, c) => sum + (c.grade || 0), 0) / gradedCount).toFixed(1)
+  const resultCases = Object.values(run.cases).filter(c => c.result !== undefined);
+  const resultCount = resultCases.length;
+  const passCount = resultCases.filter(c => c.result === true).length;
+  const passRate = resultCount > 0
+    ? `${Math.round(passCount / resultCount * 100)}%`
     : 'N/A';
 
   // Truncate visible text BEFORE applying colors, then pad the colored result
@@ -53,10 +55,10 @@ function formatRunRow(run: Run, variantName?: string): string {
   const variantCol = padVisible(variantName ? chalk.magenta(variantText.substring(0, 14)) : chalk.dim('-'), 16);
   const dateCol = padVisible(chalk.dim(formatDate(run.createdAt)), 20);
   const agentCol = padVisible(chalk.yellow(run.agent.name.substring(0, 10)), 10);
-  const casesCol = padVisible(`${gradedCount}/${caseCount}`, 8);
-  const gradeCol = gradedCount > 0 ? chalk.green(`${avgGrade}/10`) : chalk.dim('N/A');
+  const casesCol = padVisible(`${resultCount}/${caseCount}`, 8);
+  const rateCol = resultCount > 0 ? chalk.green(passRate) : chalk.dim('N/A');
 
-  return `  ${idCol}  ${labelCol}  ${variantCol}  ${dateCol}  ${agentCol}  ${casesCol}  ${gradeCol}`;
+  return `  ${idCol}  ${labelCol}  ${variantCol}  ${dateCol}  ${agentCol}  ${casesCol}  ${rateCol}`;
 }
 
 /**
@@ -104,8 +106,8 @@ export async function runsListCommand(options: { json?: boolean }): Promise<void
 
   console.log(box(
     chalk.bold(`${runs.length} run${runs.length === 1 ? '' : 's'}\n\n`) +
-    chalk.dim('ID                    Label             Variant           Date                  Agent       Cases     Grade\n') +
-    chalk.dim('─'.repeat(110)) + '\n' +
+    chalk.dim('ID                    Label             Variant           Date                  Agent       Cases     Pass Rate\n') +
+    chalk.dim('─'.repeat(115)) + '\n' +
     runs.map(run => formatRunRow(run, getVariantName(run.agent.variantId))).join('\n'),
     'Runs'
   ));
@@ -146,9 +148,10 @@ export async function runsShowCommand(options: { id: string; json?: boolean }): 
 
   // Display run details
   const cases = Object.entries(run.cases);
-  const gradedCases = cases.filter(([_, c]) => c.grade !== undefined);
-  const avgGrade = gradedCases.length > 0
-    ? (gradedCases.reduce((sum, [_, c]) => sum + (c.grade || 0), 0) / gradedCases.length).toFixed(1)
+  const resultCases = cases.filter(([_, c]) => c.result !== undefined);
+  const passCount = resultCases.filter(([_, c]) => c.result === true).length;
+  const passRate = resultCases.length > 0
+    ? `${Math.round(passCount / resultCases.length * 100)}%`
     : 'N/A';
 
   const header = [
@@ -161,8 +164,8 @@ export async function runsShowCommand(options: { id: string; json?: boolean }): 
     formatAgentConfig(run.agent),
     '',
     chalk.bold('Summary:'),
-    `Cases: ${gradedCases.length}/${cases.length} graded`,
-    `Average Grade: ${avgGrade}/10`,
+    `Cases: ${resultCases.length}/${cases.length} evaluated`,
+    `Pass Rate: ${passRate}`,
   ].filter(Boolean).join('\n');
 
   console.log(box(header, `Run: ${run.id.substring(0, 20)}`));
@@ -170,19 +173,19 @@ export async function runsShowCommand(options: { id: string; json?: boolean }): 
   // Display case results
   if (cases.length > 0) {
     console.log(chalk.bold('\n  Case Results:\n'));
-    console.log(chalk.dim('  Case ID                Grade    Graded By    Notes'));
+    console.log(chalk.dim('  Case ID                Result     Evaluated By  Notes'));
     console.log(chalk.dim('  ' + '─'.repeat(70)));
 
     for (const [caseId, caseRun] of cases) {
-      const grade = caseRun.grade !== undefined
-        ? chalk.green(`${caseRun.grade}/10`)
+      const resultDisplay = caseRun.result !== undefined
+        ? (caseRun.result ? chalk.green('✓ Pass') : chalk.red('✗ Fail'))
         : chalk.dim('N/A');
-      const gradedBy = caseRun.gradedBy || chalk.dim('-');
+      const evaluatedBy = caseRun.resultBy || chalk.dim('-');
       const notes = caseRun.notes
         ? chalk.dim(caseRun.notes.substring(0, 30) + (caseRun.notes.length > 30 ? '...' : ''))
         : chalk.dim('-');
 
-      console.log(`  ${caseId.padEnd(22)} ${grade.padEnd(12)} ${gradedBy.padEnd(12)} ${notes}`);
+      console.log(`  ${caseId.padEnd(22)} ${resultDisplay.padEnd(12)} ${evaluatedBy.padEnd(12)} ${notes}`);
     }
     console.log('');
   }
