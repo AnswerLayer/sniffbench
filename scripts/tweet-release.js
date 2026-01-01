@@ -4,8 +4,8 @@
  * Tweet release announcements to @sniffbench
  *
  * This script is called by the release workflow after semantic-release
- * successfully publishes a new version. It reads the changelog and posts
- * a formatted tweet announcing the release.
+ * successfully publishes a new version. It reads commit messages since
+ * the last release and posts a formatted tweet announcing the release.
  *
  * Required environment variables:
  * - X_API_KEY: Twitter API key
@@ -15,8 +15,7 @@
  * - NEW_VERSION: Version being released (set by workflow)
  */
 
-const fs = require('fs');
-const path = require('path');
+const { execSync } = require('child_process');
 
 // Only import twitter-api-v2 if we have credentials
 const hasCredentials =
@@ -39,8 +38,8 @@ async function main() {
     process.exit(0);
   }
 
-  // Extract release highlights from CHANGELOG.md
-  const highlights = extractHighlights();
+  // Extract release highlights from commit messages
+  const highlights = extractHighlightsFromCommits();
 
   // Format the tweet
   const tweet = formatTweet(version, highlights);
@@ -62,53 +61,66 @@ async function main() {
 }
 
 /**
- * Extract bullet points from the latest release in CHANGELOG.md
+ * Find the previous release tag
  */
-function extractHighlights() {
-  const changelogPath = path.join(__dirname, '..', 'CHANGELOG.md');
+function getPreviousTag() {
+  try {
+    // Get all version tags sorted by version number, take the second-to-last
+    const tags = execSync('git tag -l "v*" --sort=-version:refname', { encoding: 'utf-8' })
+      .trim()
+      .split('\n')
+      .filter(Boolean);
 
-  if (!fs.existsSync(changelogPath)) {
-    console.log('CHANGELOG.md not found, using generic message');
+    // Return the previous tag (second in the list since current release tag is first)
+    return tags.length > 1 ? tags[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Extract highlights from commit messages since last release
+ */
+function extractHighlightsFromCommits() {
+  const previousTag = getPreviousTag();
+
+  let gitLogCmd;
+  if (previousTag) {
+    // Get commits since the previous tag
+    gitLogCmd = `git log ${previousTag}..HEAD --oneline --no-merges`;
+  } else {
+    // No previous tag, get recent commits (limit to 20)
+    gitLogCmd = 'git log -20 --oneline --no-merges';
+  }
+
+  let commits;
+  try {
+    commits = execSync(gitLogCmd, { encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
+  } catch {
+    console.log('Could not read git log, using generic message');
     return [];
   }
 
-  const content = fs.readFileSync(changelogPath, 'utf-8');
+  const highlights = [];
 
-  // Find the first release section (## [version])
-  const releaseMatch = content.match(/## \[\d+\.\d+\.\d+\][^\n]*\n([\s\S]*?)(?=## \[|$)/);
+  for (const commit of commits) {
+    // Remove the commit hash prefix
+    const message = commit.replace(/^[a-f0-9]+\s+/, '');
 
-  if (!releaseMatch) {
-    return [];
-  }
+    // Extract feat: and fix: commits
+    const featMatch = message.match(/^feat(?:\([^)]+\))?:\s*(.+)/i);
+    const fixMatch = message.match(/^fix(?:\([^)]+\))?:\s*(.+)/i);
 
-  const releaseContent = releaseMatch[1];
-
-  // Extract bullet points (### Features, ### Bug Fixes sections)
-  const bullets = [];
-
-  // Match feature items
-  const featuresMatch = releaseContent.match(/### Features\n([\s\S]*?)(?=###|$)/);
-  if (featuresMatch) {
-    const featureItems = featuresMatch[1].match(/\* ([^\n]+)/g);
-    if (featureItems) {
-      bullets.push(...featureItems.slice(0, 2).map((item) => item.replace(/^\* /, '')));
+    if (featMatch && highlights.length < 3) {
+      highlights.push(featMatch[1].trim());
+    } else if (fixMatch && highlights.length < 3) {
+      highlights.push(fixMatch[1].trim());
     }
+
+    if (highlights.length >= 3) break;
   }
 
-  // Match bug fix items
-  const fixesMatch = releaseContent.match(/### Bug Fixes\n([\s\S]*?)(?=###|$)/);
-  if (fixesMatch) {
-    const fixItems = fixesMatch[1].match(/\* ([^\n]+)/g);
-    if (fixItems && bullets.length < 3) {
-      bullets.push(...fixItems.slice(0, 3 - bullets.length).map((item) => item.replace(/^\* /, '')));
-    }
-  }
-
-  // Clean up bullet text (remove commit refs, simplify)
-  return bullets.map((b) => {
-    // Remove commit hash references like ([abc1234](url))
-    return b.replace(/\s*\(\[[a-f0-9]+\]\([^)]+\)\)/g, '').trim();
-  });
+  return highlights;
 }
 
 /**
