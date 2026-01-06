@@ -11,8 +11,6 @@ import {
   diffAgentConfig,
   performMigration,
   needsMigration,
-  Run,
-  CaseRun,
 } from '../../runs';
 import {
   loadVariants,

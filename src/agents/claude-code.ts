@@ -10,7 +10,6 @@ import {
   AgentWrapper,
   AgentResult,
   AgentRunOptions,
-  AgentEvent,
   ToolCall,
   emptyAgentResult,
 } from './types.js';

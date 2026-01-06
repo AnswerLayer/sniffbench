@@ -11,7 +11,7 @@ export async function statusCommand() {
   spinner.stop();
 
   // Build status display
-  let lines: string[] = [];
+  const lines: string[] = [];
 
   lines.push(chalk.bold('System Status\n'));
 

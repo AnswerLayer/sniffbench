@@ -10,7 +10,6 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import { execSync, spawn, spawnSync } from 'child_process';
 import type { Variant, ContainerInfo, SandboxableSnapshot } from '../variants/types';
-import type { FullMcpServerConfig } from '../runs/types';
 
 /** Base image for variant containers */
 const BASE_IMAGE = 'node:20-slim';

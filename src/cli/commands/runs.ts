@@ -148,8 +148,8 @@ export async function runsShowCommand(options: { id: string; json?: boolean }): 
 
   // Display run details
   const cases = Object.entries(run.cases);
-  const resultCases = cases.filter(([_, c]) => c.result !== undefined);
-  const passCount = resultCases.filter(([_, c]) => c.result === true).length;
+  const resultCases = cases.filter(([, c]) => c.result !== undefined);
+  const passCount = resultCases.filter(([, c]) => c.result === true).length;
   const passRate = resultCases.length > 0
     ? `${Math.round(passCount / resultCases.length * 100)}%`
     : 'N/A';

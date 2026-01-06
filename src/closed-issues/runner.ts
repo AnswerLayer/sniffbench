@@ -14,7 +14,6 @@ import {
   calculateDiffSimilarity,
   calculateFileOverlap,
   calculateOverallScore,
-  parseDiff,
 } from './comparator';
 import { Variant } from '../variants/types';
 import { runInVariant, RunOptions, VariantRunResult } from '../sandbox/variant-runner';

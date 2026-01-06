@@ -13,7 +13,6 @@ import {
   ClosedIssueCase,
   ClosedIssueSource,
   ReferenceSolution,
-  ClosedIssueSummary,
   GitHubPR,
   GitHubIssue,
   PRReviewComment,

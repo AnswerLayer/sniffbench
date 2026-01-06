@@ -16,11 +16,10 @@ import {
   saveCaseToYaml,
   runClosedIssueCase,
   ScanOptions,
-  ScanResult,
   ClosedIssueCase,
   RunCaseResult,
 } from '../../closed-issues';
-import { getDefaultCasesDir, loadCases } from '../../cases/loader';
+import { loadCases } from '../../cases/loader';
 import { Case } from '../../cases/types';
 
 /**
@@ -29,7 +28,7 @@ import { Case } from '../../cases/types';
 function isClosedIssueCase(c: Case): c is ClosedIssueCase {
   return c.source === 'closed_issue' && 'closedIssue' in c && 'referenceSolution' in c;
 }
-import { loadVariants, findVariantByName, resolveVariantId } from '../../variants/store';
+import { loadVariants, resolveVariantId } from '../../variants/store';
 import { Variant } from '../../variants/types';
 import { getActiveVariant } from './variant';
 import { variantImageExists } from '../../sandbox/variant-container';

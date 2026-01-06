@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import { box } from '../../utils/ui';
 
-export async function initCommand(path: string) {
+export async function initCommand(_path: string) {
   console.log(
     box(
       chalk.yellow('Coming soon!\n\n') +

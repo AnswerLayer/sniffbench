@@ -99,6 +99,7 @@ function createExplorationSpinner(agentName: string): {
       const trimmed = line.trim();
       if (trimmed.startsWith('›')) {
         // Strip ANSI codes for clean storage
+        // eslint-disable-next-line no-control-regex
         const clean = trimmed.replace(/\x1b\[[0-9;]*m/g, '').substring(0, 80);
         toolCalls.push(clean);
         spinner.text = `${getBaseText()} ${chalk.dim(`(${toolCalls.length} tools) ${clean}`)}`;
@@ -284,7 +285,7 @@ function createPrompt(): readline.Interface {
  * Check if readline is still usable
  */
 function isReadlineOpen(rl: readline.Interface): boolean {
-  // @ts-ignore - accessing internal property to check state
+  // @ts-expect-error - accessing internal property to check state
   return rl.terminal !== undefined && !rl.closed;
 }
 
@@ -295,7 +296,7 @@ const USER_INPUT_TIMEOUT_MS = 5 * 60 * 1000;
  * Ask user a question and get response with timeout
  */
 async function ask(rl: readline.Interface, question: string, timeoutMs: number = USER_INPUT_TIMEOUT_MS): Promise<string> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, _reject) => {
     let answered = false;
 
     const timeout = setTimeout(() => {
@@ -330,7 +331,7 @@ async function ask(rl: readline.Interface, question: string, timeoutMs: number =
  * Ask user for pass/fail result
  */
 async function askResult(rl: readline.Interface): Promise<boolean> {
-  while (true) {
+  for (;;) {
     const input = await ask(rl, chalk.cyan('\n  Did the agent pass? (y/n): '));
     const lower = input.toLowerCase();
 
@@ -348,7 +349,7 @@ async function askResult(rl: readline.Interface): Promise<boolean> {
 /**
  * Format an agent's answer for display
  */
-function formatAnswer(answer: string, maxLines: number = 30): string {
+function _formatAnswer(answer: string, maxLines: number = 30): string {
   const lines = answer.split('\n');
   if (lines.length <= maxLines) {
     return answer;
@@ -482,14 +483,14 @@ async function runInterviewQuestion(
   console.log('');
   const exploration = createExplorationSpinner(agent.displayName);
 
-  let outputStarted = false;
+  let _outputStarted = false;
   const startTime = Date.now();
 
   let textOutputStarted = false;
 
   try {
     const result = await getAgentResponse(caseData, agent, projectRoot, (event) => {
-      outputStarted = true;
+      _outputStarted = true;
 
       switch (event.type) {
         case 'tool_start': {
@@ -869,7 +870,7 @@ function displayComparisonSummary(results: ComparisonResult[]): void {
 export async function interviewCommand(options: InterviewOptions) {
   const projectRoot = process.cwd();
   const isCompareMode = options.compare === true;
-  const isRunMode = !!options.run;
+  const _isRunMode = !!options.run;
 
   // Migrate baselines if needed
   if (needsMigration(projectRoot)) {
