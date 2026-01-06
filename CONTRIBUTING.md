@@ -94,6 +94,50 @@ Bootstrap test cases should:
 
 We're not strict about commit message formats or extensive documentation at this stage. Just make it clear what you're doing.
 
+## Releases
+
+Releases are automated via GitHub Actions when commits are merged to `main`.
+
+### How it works
+
+1. **Merge to main** triggers the release workflow
+2. **semantic-release** analyzes commits to determine version bump
+3. **npm publish** pushes the new version to the registry
+4. **GitHub Release** is created with auto-generated notes
+5. **Tweet** is posted to announce the release (if configured)
+
+### Commit message format
+
+Version bumps are determined by commit prefixes:
+
+| Prefix | Version Bump | Example |
+|--------|--------------|---------|
+| `fix:` | Patch (0.0.x) | `fix: handle empty baselines array` |
+| `feat:` | Minor (0.x.0) | `feat: add compare flag` |
+| `BREAKING CHANGE:` | Major (x.0.0) | `feat!: remove deprecated API` |
+| `docs:`, `chore:` | No release | `docs: update README` |
+
+### Required secrets (maintainers only)
+
+For releases to work, these GitHub secrets must be configured:
+
+- `NPM_TOKEN` - npm publish token with write access
+- `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_SECRET` - Optional, for tweet announcements
+
+### Manual releases
+
+If you need to trigger a release manually:
+
+```bash
+# Ensure you're on main with latest changes
+git checkout main && git pull
+
+# Run semantic-release in dry-run mode first
+npx semantic-release --dry-run
+
+# If it looks good, push a conventional commit to trigger release
+```
+
 ## Architecture Decisions
 
 ### Language Choice
