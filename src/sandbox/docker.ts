@@ -43,7 +43,7 @@ export class DockerSandboxManager implements SandboxManager {
 
   async checkAvailability(): Promise<AvailabilityStatus> {
     try {
-      const info = await this.docker.info();
+      const _info = await this.docker.info();
       const version = await this.docker.version();
 
       return {

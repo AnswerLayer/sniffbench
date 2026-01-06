@@ -134,11 +134,11 @@ export async function doctorCommand() {
 
   // Summary
   console.log('');
-  const passCount = checks.filter((c) => c.status === 'pass').length;
+  const _passCount = checks.filter((c) => c.status === 'pass').length;
   const failCount = checks.filter((c) => c.status === 'fail').length;
   const warnCount = checks.filter((c) => c.status === 'warn').length;
 
-  let summaryLines: string[] = [];
+  const summaryLines: string[] = [];
   summaryLines.push(chalk.bold('Diagnostic Summary\n'));
 
   for (const check of checks) {

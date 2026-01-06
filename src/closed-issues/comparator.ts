@@ -5,10 +5,8 @@
  * providing multiple metrics for evaluation.
  */
 
-import { execSync } from 'child_process';
 import {
   ComparisonResult,
-  ComparisonDetails,
   ReferenceSolution,
 } from './types';
 import { Sandbox } from '../sandbox/types';

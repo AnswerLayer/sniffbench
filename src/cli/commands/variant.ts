@@ -46,7 +46,7 @@ function formatDate(isoDate: string): string {
  * Format a variant for list display
  */
 function formatVariantRow(variant: Variant): string {
-  const date = chalk.dim(formatDate(variant.createdAt));
+  const _date = chalk.dim(formatDate(variant.createdAt));
   const name = chalk.cyan(variant.name);
   const desc = variant.description
     ? chalk.dim(variant.description.substring(0, 30) + (variant.description.length > 30 ? '...' : ''))
@@ -674,6 +674,7 @@ export async function variantActiveCommand(): Promise<void> {
  * Get the currently active variant name, if any
  */
 export function getActiveVariant(projectRoot: string): string | null {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const fs = require('fs');
   const settingsPath = `${projectRoot}/.sniffbench/active-variant`;
 

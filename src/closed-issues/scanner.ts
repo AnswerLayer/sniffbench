@@ -77,10 +77,10 @@ export async function scanForClosedIssues(options: ScanOptions): Promise<ScanRes
   const {
     repoPath,
     maxIssues = DEFAULT_MAX_ISSUES,
-    maxPrSize = DEFAULT_MAX_PR_SIZE,
-    maxFilesChanged = DEFAULT_MAX_FILES,
+    maxPrSize: _maxPrSize = DEFAULT_MAX_PR_SIZE,
+    maxFilesChanged: _maxFilesChanged = DEFAULT_MAX_FILES,
     since,
-    requireTests = false,
+    requireTests: _requireTests = false,
     includeAll = false,
   } = options;
 

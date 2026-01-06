@@ -6,7 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import YAML from 'yaml';
 import { Rubric, RubricCriterion, RubricReference } from '../cases/types';
-import { builtInRubrics, getBuiltInRubric } from './defaults';
+import { builtInRubrics } from './defaults';
 
 /**
  * Rubric registry - holds all available rubrics

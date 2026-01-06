@@ -25,6 +25,7 @@ export function box(content: string, title?: string): string {
  * Strip ANSI escape codes from a string for length calculation
  */
 export function stripAnsi(str: string): string {
+  // eslint-disable-next-line no-control-regex
   return str.replace(/\u001b\[[0-9;]*m/g, '');
 }
 

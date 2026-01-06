@@ -264,7 +264,7 @@ async function evaluateWithRubric(
 
   const criteriaResults: CriterionResult[] = [];
   let totalWeightedScore = 0;
-  let totalWeight = 0;
+  let _totalWeight = 0;
 
   // Evaluate each criterion in the rubric
   for (const [criterionKey, criterion] of Object.entries(rubric.criteria)) {
@@ -356,7 +356,7 @@ async function evaluateWithRubric(
     });
 
     totalWeightedScore += weightedScore;
-    totalWeight += criterion.weight;
+    _totalWeight += criterion.weight;
   }
 
   // Calculate overall score (sum of weighted scores, as percentage)
