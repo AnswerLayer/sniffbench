@@ -1,0 +1,135 @@
+id: bootstrap-006
+title: "Refactor Bad Code"
+prompt: |
+  The following code works but has multiple issues:
+  - Poor naming
+  - Magic numbers
+  - No error handling
+  - Hard to test
+  - Code duplication
+
+  Refactor the code to be:
+  - Readable with clear naming
+  - Maintainable
+  - Well-tested with the provided test suite
+  - Handle edge cases properly
+
+  The tests describe the expected behavior - make them pass
+  while improving code quality.
+
+  Run: node shipping_calculator.test.js
+
+source: bootstrap
+category: refactoring
+language: javascript
+difficulty: medium
+
+tags:
+  - javascript
+  - refactoring
+  - code-quality
+
+files:
+  - path: shipping_calculator.js
+    content: |
+      function c(w, d, z) {
+        if (w <= 0) return 0;
+        if (z == 'domestic') {
+          if (w < 5) return 5;
+          if (w < 10) return 10;
+          if (w < 20) return 15;
+          return 25;
+        }
+        if (z == 'international') {
+          if (d == 'express') {
+            if (w < 5) return 20;
+            if (w < 10) return 35;
+            return 50;
+          }
+          if (w < 5) return 15;
+          if (w < 10) return 25;
+          return 40;
+        }
+        return null;
+      }
+
+      module.exports = { c };
+
+  - path: shipping_calculator.test.js
+    content: |
+      const { c } = require('./shipping_calculator');
+
+      function test(name, fn) {
+        try {
+          fn();
+          console.log(`✓ ${name}`);
+        } catch (err) {
+          console.log(`✗ ${name}: ${err.message}`);
+          process.exit(1);
+        }
+      }
+
+      // Note: The exported function is named 'c'. This is part of what
+      // needs to be refactored. For now, we use 'c' in tests.
+
+      test('domestic under 5 lbs', () => {
+        const r = c(4, '', 'domestic');
+        if (r !== 5) throw new Error(`Expected 5, got ${r}`);
+      });
+
+      test('domestic 5-9 lbs', () => {
+        const r = c(7, '', 'domestic');
+        if (r !== 10) throw new Error(`Expected 10, got ${r}`);
+      });
+
+      test('domestic 10-19 lbs', () => {
+        const r = c(15, '', 'domestic');
+        if (r !== 15) throw new Error(`Expected 15, got ${r}`);
+      });
+
+      test('domestic 20+ lbs', () => {
+        const r = c(25, '', 'domestic');
+        if (r !== 25) throw new Error(`Expected 25, got ${r}`);
+      });
+
+      test('international standard under 5 lbs', () => {
+        const r = c(4, 'standard', 'international');
+        if (r !== 15) throw new Error(`Expected 15, got ${r}`);
+      });
+
+      test('international standard 5-9 lbs', () => {
+        const r = c(7, 'standard', 'international');
+        if (r !== 25) throw new Error(`Expected 25, got ${r}`);
+      });
+
+      test('international standard 10+ lbs', () => {
+        const r = c(12, 'standard', 'international');
+        if (r !== 40) throw new Error(`Expected 40, got ${r}`);
+      });
+
+      test('international express under 5 lbs', () => {
+        const r = c(3, 'express', 'international');
+        if (r !== 20) throw new Error(`Expected 20, got ${r}`);
+      });
+
+      test('international express 5-9 lbs', () => {
+        const r = c(8, 'express', 'international');
+        if (r !== 35) throw new Error(`Expected 35, got ${r}`);
+      });
+
+      test('international express 10+ lbs', () => {
+        const r = c(15, 'express', 'international');
+        if (r !== 50) throw new Error(`Expected 50, got ${r}`);
+      });
+
+      test('zero or negative weight', () => {
+        if (c(0, '', 'domestic') !== 0) throw new Error('Zero weight should be 0');
+        if (c(-1, '', 'domestic') !== 0) throw new Error('Negative weight should be 0');
+      });
+
+      test('invalid zone', () => {
+        const r = c(5, '', 'invalid');
+        if (r !== null) throw new Error('Invalid zone should return null');
+      });
+
+      console.log('All tests passed!');

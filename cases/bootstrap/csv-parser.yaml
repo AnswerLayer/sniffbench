@@ -1,0 +1,120 @@
+id: bootstrap-007
+title: "File Processing - CSV Parser"
+prompt: |
+  Implement a CSV parser that can read and parse a CSV file.
+  The implementation should handle:
+  - Basic comma-separated values
+  - Quoted fields containing commas
+  - Header row extraction
+  - Converting to array of objects
+
+  Run: python csv_parser.test.py
+  Make all tests pass.
+
+source: bootstrap
+category: codefix
+language: python
+difficulty: medium
+
+tags:
+  - python
+  - file-processing
+  - csv
+
+files:
+  - path: csv_parser.py
+    content: |
+      import csv
+
+      def parse_csv(filepath, has_header=True):
+          """
+          Parse a CSV file and return data as list of dicts (or lists).
+
+          Args:
+              filepath: Path to the CSV file
+              has_header: Whether the first row is a header row
+
+          Returns:
+              List of dictionaries (if has_header=True) or list of lists
+          """
+          # TODO: Implement this function
+          return []
+
+  - path: csv_parser.test.py
+    content: |
+      import unittest
+      import os
+      import tempfile
+      from csv_parser import parse_csv
+
+      class TestCSVParser(unittest.TestCase):
+
+          def test_simple_csv_with_header(self):
+              data = '''name,age,city
+              Alice,30,New York
+              Bob,25,Los Angeles
+              Charlie,35,Chicago'''
+
+              with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
+                  f.write(data)
+                  f.flush()
+
+                  result = parse_csv(f.name, has_header=True)
+
+                  self.assertEqual(len(result), 3)
+                  self.assertEqual(result[0]['name'], 'Alice')
+                  self.assertEqual(result[0]['age'], '30')
+                  self.assertEqual(result[1]['city'], 'Los Angeles')
+
+              os.unlink(f.name)
+
+          def test_csv_without_header(self):
+              data = '''Alice,30,New York
+              Bob,25,Los Angeles'''
+
+              with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
+                  f.write(data)
+                  f.flush()
+
+                  result = parse_csv(f.name, has_header=False)
+
+                  self.assertEqual(len(result), 2)
+                  self.assertEqual(result[0][0], 'Alice')
+                  self.assertEqual(result[1][2], 'Los Angeles')
+
+              os.unlink(f.name)
+
+          def test_quoted_fields(self):
+              data = '''product,price,description
+              Widget,10.00,"A widget, really."
+              Gadget,15.00,"A device, good."'''
+
+              with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
+                  f.write(data)
+                  f.flush()
+
+                  result = parse_csv(f.name, has_header=True)
+
+                  self.assertEqual(len(result), 2)
+                  self.assertEqual(result[0]['description'], 'A widget, really.')
+                  self.assertEqual(result[1]['description'], 'A device, good.')
+
+              os.unlink(f.name)
+
+          def test_single_row(self):
+              data = '''name,value
+              test,123'''
+
+              with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
+                  f.write(data)
+                  f.flush()
+
+                  result = parse_csv(f.name, has_header=True)
+
+                  self.assertEqual(len(result), 1)
+                  self.assertEqual(result[0]['name'], 'test')
+
+              os.unlink(f.name)
+
+      if __name__ == '__main__':
+          unittest.main()
