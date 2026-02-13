@@ -6,6 +6,7 @@
 
 import { AgentWrapper, AgentRegistry } from './types';
 import { createClaudeCodeAgent } from './claude-code';
+import { createOpencodeAgent } from './opencode';
 
 /**
  * Default agent registry implementation
@@ -16,6 +17,7 @@ class DefaultAgentRegistry implements AgentRegistry {
   constructor() {
     // Register built-in agents
     this.register(createClaudeCodeAgent());
+    this.register(createOpencodeAgent());
   }
 
   get(name: string): AgentWrapper | undefined {
