@@ -86,7 +86,7 @@ export async function runCommand(options: RunOptions) {
 
   const onCaseComplete = (result: CaseResult) => {
     if (currentSpinner) {
-      const scorePercent = Math.round(result.score * 100);
+      const scorePercent = Math.round(result.score);
       if (result.passed) {
         currentSpinner.succeed(`${result.caseId}: ${chalk.green('PASSED')} (${scorePercent}%, ${formatDuration(result.durationMs)})`);
       } else if (result.timedOut) {
@@ -111,7 +111,7 @@ export async function runCommand(options: RunOptions) {
 
     // Display summary
     console.log('');
-    const averageScorePercent = Math.round(result.summary.averageScore * 100);
+    const averageScorePercent = Math.round(result.summary.averageScore);
     const summaryLines = [
       chalk.bold('Run Summary\n'),
       `Run ID: ${chalk.cyan(result.runId)}`,

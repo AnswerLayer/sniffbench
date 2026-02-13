@@ -22,6 +22,8 @@ import {
 import { createSandboxManager, checkDocker, RECOMMENDED_IMAGES } from '../sandbox';
 import { Sandbox, SandboxConfig } from '../sandbox/types';
 import { getRubricRegistry } from '../rubrics/loader';
+import { getAgent } from '../agents/registry';
+import type { AgentResult } from '../agents/types';
 
 export interface RunnerOptions {
   /** Agent being evaluated (for logging) */
@@ -213,6 +215,26 @@ async function runSingleCase(
       // Install dependencies if needed
       await installDependencies(sandbox, caseData.language, options, caseIndex, totalCases, caseData.id);
 
+      // Run the agent to attempt to solve the case
+      options.onProgress?.({
+        type: 'running',
+        caseId: caseData.id,
+        caseIndex,
+        totalCases,
+        message: 'Running agent...',
+      });
+
+      const agent = getAgent(options.agent);
+      const agentResult: AgentResult = await agent.run(caseData.prompt, {
+        cwd: tempDir,
+        timeoutMs: (options.timeoutSeconds || 300) * 1000,
+        permissionMode: 'acceptEdits',
+      });
+
+      if (!agentResult.success) {
+        throw new Error(`Agent execution failed: ${agentResult.error}`);
+      }
+
       // Evaluate using the rubric
       options.onProgress?.({
         type: 'validating',
@@ -230,7 +252,7 @@ async function runSingleCase(
         caseId: caseData.id,
         caseIndex,
         totalCases,
-        message: result.passed ? `Passed (${(result.score * 100).toFixed(0)}%)` : `Failed (${(result.score * 100).toFixed(0)}%)`,
+        message: result.passed ? `Passed (${Math.round(result.score)}%)` : `Failed (${Math.round(result.score)}%)`,
       });
 
       return {

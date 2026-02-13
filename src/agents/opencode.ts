@@ -90,10 +90,50 @@ export class OpencodeAgent implements AgentWrapper {
     let model = 'unknown';
     let sessionId = '';
 
+    const createOpencodeFn = await loadSDK();
+      
+    const config = {
+      model: 'local-glm/glm-4.7-local-4bit',
+      provider: {
+        'local-glm': {
+          api: 'openai',
+          options: {
+            baseURL: 'http://127.0.0.1:8081/v1',
+            apiKey: 'local-glm-key'
+          },
+          models: {
+            'glm-4.7-local-4bit': {
+              name: 'GLM-4.7 Local (4-bit)',
+              id: '/Users/studio/models/GLM-4.7-4bit',
+              reasoning: false,
+              tool_call: true,
+              temperature: true,
+              limit: {
+                context: 32768,
+                output: 4096
+              },
+              cost: {
+                input: 0,
+                output: 0
+              },
+              modalities: {
+                input: ['text'],
+                output: ['text']
+              }
+            }
+          }
+        }
+      }
+    };
+
+    let opencode: Awaited<ReturnType<typeof createOpencodeFn>> | null = null;
+
     try {
-      const createOpencodeFn = await loadSDK();
-      const opencode = await createOpencodeFn({
-        signal: AbortSignal.timeout(timeoutMs),
+      opencode = await createOpencodeFn({
+        hostname: '127.0.0.1',
+        port: 4097,
+        timeout: 15000,
+        config,
       });
 
       const client = opencode.client;
@@ -121,13 +161,22 @@ export class OpencodeAgent implements AgentWrapper {
         body: {
           parts: [{ type: 'text', text: prompt }],
         },
+        signal: AbortSignal.timeout(timeoutMs - 5000),
       });
 
       if (promptResult.error) {
         throw new Error(`Prompt failed: ${JSON.stringify(promptResult.error)}`);
       }
 
-      const response = promptResult.data;
+      if (!promptResult.data) {
+        throw new Error('No data returned from prompt');
+      }
+
+      const response = promptResult.data as { info?: any; parts?: any[] };
+      if (!response || (!response.info || !response.parts)) {
+        throw new Error(`Unexpected response structure: ${JSON.stringify({ hasResponse: !!response, keys: response ? Object.keys(response) : null })}`);
+      }
+
       const parts = response.parts || [];
 
       for (const part of parts) {
@@ -218,7 +267,7 @@ export class OpencodeAgent implements AgentWrapper {
       options.onEvent?.({ type: 'complete', result });
       return result;
 
-    } catch (error) {
+} catch (error) {
       const errorMessage = error instanceof Error
         ? error.message
         : String(error);
@@ -237,6 +286,8 @@ export class OpencodeAgent implements AgentWrapper {
 
       options.onEvent?.({ type: 'complete', result: errorResult });
       return errorResult;
+    } finally {
+      opencode?.server?.close?.();
     }
   }
 }
