@@ -64,6 +64,7 @@ program
   .option('--output <dir>', 'Output directory for results', 'results')
   .option('--timeout <seconds>', 'Timeout per case in seconds', '300')
   .option('--network', 'Enable network access in sandbox (disabled by default)')
+  .option('--model <model>', 'Model to use (agent-specific, e.g. local-glm/glm-4.7-local-4bit)')
   .action((opts) => runCommand({ ...opts, timeout: parseInt(opts.timeout, 10) }));
 
 program

@@ -460,6 +460,18 @@ export interface CaseResult {
   /** Agent behavior trace */
   agentTrace?: AgentTrace;
 
+  /** The agent's text response */
+  agentResponse?: string;
+
+  /** Tool calls the agent made */
+  agentToolCalls?: { name: string; durationMs?: number; success?: boolean }[];
+
+  /** Model used */
+  agentModel?: string;
+
+  /** Token usage */
+  agentTokens?: { input: number; output: number; total: number };
+
   /** Total duration in milliseconds */
   durationMs: number;
 

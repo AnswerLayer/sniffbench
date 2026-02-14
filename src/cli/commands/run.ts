@@ -14,6 +14,7 @@ interface RunOptions {
   output: string;
   timeout?: number;
   network?: boolean;
+  model?: string;
 }
 
 export async function runCommand(options: RunOptions) {
@@ -103,6 +104,7 @@ export async function runCommand(options: RunOptions) {
   try {
     const result = await runCases(cases, {
       agent: options.agent,
+      model: options.model,
       timeoutSeconds: options.timeout || 300,
       networkEnabled: options.network || false,
       onProgress,

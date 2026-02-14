@@ -29,6 +29,9 @@ export interface RunnerOptions {
   /** Agent being evaluated (for logging) */
   agent: string;
 
+  /** Model to use (passed to agent) */
+  model?: string;
+
   /** Timeout per case in seconds */
   timeoutSeconds?: number;
 
@@ -227,6 +230,7 @@ async function runSingleCase(
       const agent = getAgent(options.agent);
       const agentResult: AgentResult = await agent.run(caseData.prompt, {
         cwd: tempDir,
+        model: options.model,
         timeoutMs: (options.timeoutSeconds || 300) * 1000,
         permissionMode: 'acceptEdits',
       });
@@ -257,6 +261,20 @@ async function runSingleCase(
 
       return {
         ...result,
+        agentResponse: agentResult.answer,
+        agentToolCalls: agentResult.toolCalls.map((t) => ({
+          name: t.name,
+          durationMs: t.durationMs,
+          success: t.success,
+        })),
+        agentModel: agentResult.model,
+        agentTokens: agentResult.tokens
+          ? {
+              input: agentResult.tokens.inputTokens,
+              output: agentResult.tokens.outputTokens,
+              total: agentResult.tokens.totalTokens,
+            }
+          : undefined,
         durationMs,
         timestamp: new Date(),
       };

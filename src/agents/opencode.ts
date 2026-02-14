@@ -155,7 +155,10 @@ export class OpencodeAgent implements AgentWrapper {
     try {
       // Spawn server in the case's working directory
       const cwd = options.cwd || process.cwd();
-      const { url, proc } = await spawnServer(cwd, this.config, 15000);
+      const config = options.model
+        ? { ...this.config, model: options.model }
+        : this.config;
+      const { url, proc } = await spawnServer(cwd, config, 15000);
       serverProc = proc;
 
       const createClient = await loadSDK();
