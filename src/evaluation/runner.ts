@@ -387,7 +387,11 @@ async function evaluateWithRubric(
   }
 
   // Normalize score by participating weight (criteria with only optional evaluators are excluded)
-  const overallScore = _totalWeight > 0 ? (totalWeightedScore / _totalWeight) * 100 : 0;
+  // Each criterion's weightedScore = rawScore * weight / 100, so totalWeightedScore
+  // is a fraction of 1.0 when all weights sum to 100. When some criteria are excluded,
+  // rescale so the participating criteria fill the full 0-100% range.
+  const participatingFraction = _totalWeight / 100;
+  const overallScore = participatingFraction > 0 ? (totalWeightedScore / participatingFraction) * 100 : 0;
 
   // Determine pass/fail (default threshold: 70%)
   const passThreshold = 70;
