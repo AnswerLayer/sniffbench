@@ -33,32 +33,22 @@ Starting from the other agent's work (opencode SDK integration + 5 bootstrap tes
 - `581a80c` — Score normalization fix
 - `57749cd` — --model flag, agent response saving
 
+9. **Implemented event streaming** — Switched from `session.prompt()` (blocking, returns only final message) to `session.promptAsync()` + `client.event.subscribe()` (SSE). Now captures all intermediate tool calls, text deltas, reasoning, and step-finish events in real-time. Falls back to fetching final messages if the stream didn't capture the answer text.
+
+10. **Implemented sandbox file snapshots** — After agent runs, before rubric evaluation, walks the workspace directory and captures all files. Compares against original case files to flag `changed: true/false`. Results JSON now includes `agentFiles` array with `{ path, content, changed }`. Skips `node_modules`, `.git`, `__pycache__`, and files over 100KB.
+
 ## What's next (not yet done)
 
-### 1. Event streaming from opencode agent
-The `session.prompt()` call is single-shot — it returns only the final assistant message. All intermediate tool calls (file reads, writes, test runs) happen inside the opencode server's agent loop and are invisible to us. `agentToolCalls` comes back empty.
-
-The SDK likely has event streaming capabilities (SSE or similar). Need to investigate:
-- Check if `client.session` has a `subscribe` or `events` method
-- Look at the SDK's generated types for event-related endpoints
-- The opencode server may expose a `/session/{id}/events` endpoint
-
-### 2. Sandbox file snapshots
-Before destroying the sandbox, read back the case files and save them in the results. This gives us the actual code the agent produced, which is what we really care about. Approach:
-- After agent runs, before rubric evaluation, read all files from sandbox
-- Diff against starting files to identify what changed
-- Save in results as `agentFiles` or similar
-
-### 3. Bootstrap test cases need work
+### 1. Bootstrap test cases need work
 - **bootstrap-003 (python-unit-test):** No-op — starter code already passes all tests. Make it actually buggy (e.g., `text.split(' ')` instead of `text.split()`).
 - **bootstrap-007 (csv-parser):** YAML block-scalar indentation embeds leading whitespace in CSV test data. Assertions will fail.
 
-### 4. CodeRabbit review items
+### 2. CodeRabbit review items
 - Remove unused `randombytes` dependency from package.json
 - Remove redundant `allowSyntheticDefaultImports` from tsconfig.json
 - Remove redundant `"dist/**/*"` from tsconfig exclude
 
-### 5. Hardcoded model config
+### 3. Hardcoded model config
 The local-glm provider config (baseURL, model path, API key) is hardcoded in `src/agents/opencode.ts`. Should be externalized — read from opencode config file or a sniffbench config file.
 
 ## SDK response structure reference
@@ -83,7 +73,26 @@ promptResult.data = {
 }
 ```
 
-**Important:** This is the FINAL message only. Intermediate steps (tool calls, file edits) happen inside the opencode server and are NOT returned here. The `parts` array for a typical run contains `step-start`, maybe `reasoning`, a `text` summary, and `step-finish` — no tool parts because tools were used in earlier turns.
+**Important:** This was the old approach. We now use `promptAsync()` + `event.subscribe()` instead.
+
+### Event streaming (current approach)
+
+```
+// Subscribe to SSE events first
+const eventResult = await client.event.subscribe({});
+
+// Send prompt asynchronously (returns immediately)
+await client.session.promptAsync({ path: { id }, body: { parts: [...] } });
+
+// Process events until session goes idle
+for await (const event of eventResult.data) {
+  // event.type: "message.part.updated" | "message.updated" | "session.status" | ...
+  // event.properties.part.type: "text" | "tool" | "reasoning" | "step-finish"
+  // event.properties.part.state.status: "pending" | "running" | "completed" | "error"
+}
+```
+
+Key event types: `message.part.updated` (tool calls, text, reasoning), `message.updated` (final message with tokens/cost), `session.status` (idle = done).
 
 ## Key technical details
 

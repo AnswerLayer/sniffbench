@@ -147,7 +147,6 @@ export class OpencodeAgent implements AgentWrapper {
     const runStartTime = Date.now();
     const timeoutMs = options.timeoutMs || 300000;
     const toolCalls: ToolCall[] = [];
-    const toolStartTimes: Map<string, number> = new Map();
     let model = 'unknown';
     let sessionId = '';
     let serverProc: ChildProcess | null = null;
@@ -175,90 +174,222 @@ export class OpencodeAgent implements AgentWrapper {
 
       options.onEvent?.({ type: 'start', timestamp: runStartTime, model });
 
-      const promptResult = await client.session.prompt({
+      // Subscribe to SSE events BEFORE sending the prompt so we capture everything
+      const eventResult = await client.event.subscribe({});
+
+      // Send prompt asynchronously (returns immediately, events stream the progress)
+      const asyncResult = await client.session.promptAsync({
         path: { id: sessionId },
         body: {
           parts: [{ type: 'text', text: prompt }],
         },
-        signal: AbortSignal.timeout(timeoutMs - 5000),
       });
 
-      if (promptResult.error) {
-        throw new Error(`Prompt failed: ${JSON.stringify(promptResult.error)}`);
+      if (asyncResult.error) {
+        throw new Error(`Prompt failed: ${JSON.stringify(asyncResult.error)}`);
       }
 
-      const response = promptResult.data as { info?: any; parts?: any[] } | undefined;
-      if (!response?.info || !response?.parts) {
-        throw new Error(
-          `Unexpected response structure: ${JSON.stringify({
-            hasResponse: !!response,
-            keys: response ? Object.keys(response) : null,
-          })}`,
-        );
-      }
-
-      // Process parts — extract answer text and track tool calls
+      // Process SSE events until the session goes idle or we time out
       let answer = '';
-      for (const part of response.parts) {
-        if (part.type === 'text') {
-          const text = (part as { text?: string }).text || '';
-          answer += text;
-          if (text) {
-            options.onEvent?.({ type: 'text_delta', text });
-          }
-        } else if (part.type === 'tool') {
-          const toolPart = part as {
-            tool: string;
-            callID: string;
-            state?: { status?: string };
-          };
-          const status = toolPart.state?.status;
+      let numTurns = 0;
+      let totalTokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+      let totalCost = 0;
+      const deadline = Date.now() + timeoutMs - 5000;
 
-          if (status === 'pending') {
-            const toolCall: ToolCall = {
-              id: toolPart.callID,
-              name: toolPart.tool,
-              input: {},
-              timestamp: Date.now(),
-            };
-            toolCalls.push(toolCall);
-            toolStartTimes.set(toolPart.callID, Date.now());
-            options.onEvent?.({ type: 'tool_start', tool: toolCall });
-          } else if (status === 'completed') {
-            const toolId = toolPart.callID;
-            const toolStart = toolStartTimes.get(toolId);
-            const durationMs = toolStart ? Date.now() - toolStart : 0;
-            const toolCall = toolCalls.find((t) => t.id === toolId);
-            if (toolCall) {
-              toolCall.durationMs = durationMs;
-              toolCall.success = true;
+      const stream = eventResult.data as AsyncIterable<any> | undefined;
+      if (!stream) {
+        throw new Error('Event stream not available — SDK returned no data from event.subscribe()');
+      }
+
+      for await (const event of stream) {
+        if (Date.now() > deadline) {
+          options.onEvent?.({ type: 'status', message: 'Timed out waiting for agent' });
+          break;
+        }
+
+        const eventType = event?.type || event?.event;
+
+        if (eventType === 'message.part.updated') {
+          const props = event.properties || event.data;
+          if (!props) continue;
+          const part = props.part;
+          if (!part) continue;
+
+          if (part.type === 'text') {
+            // Streaming text delta
+            const delta = props.delta || '';
+            if (delta) {
+              answer += delta;
+              options.onEvent?.({ type: 'text_delta', text: delta });
             }
-            options.onEvent?.({ type: 'tool_end', toolId, success: true, durationMs });
+          } else if (part.type === 'tool') {
+            const status = part.state?.status;
+            const callID = part.callID || part.callId;
+            const toolName = part.tool || 'unknown';
+
+            if (status === 'running' || status === 'pending') {
+              // Only add if not already tracked
+              if (!toolCalls.find((t) => t.id === callID)) {
+                const toolCall: ToolCall = {
+                  id: callID,
+                  name: toolName,
+                  input: part.state?.input || {},
+                  timestamp: Date.now(),
+                };
+                toolCalls.push(toolCall);
+                options.onEvent?.({ type: 'tool_start', tool: toolCall });
+                options.onEvent?.({ type: 'status', message: `Tool: ${toolName}` });
+              }
+            } else if (status === 'completed') {
+              const existing = toolCalls.find((t) => t.id === callID);
+              if (existing) {
+                existing.durationMs = part.state?.time
+                  ? (part.state.time.end - part.state.time.start) * 1000
+                  : Date.now() - existing.timestamp;
+                existing.success = true;
+                existing.result = part.state?.output
+                  ? String(part.state.output).substring(0, 500)
+                  : undefined;
+              } else {
+                // Tool completed without a prior start event (can happen if subscription started late)
+                toolCalls.push({
+                  id: callID,
+                  name: toolName,
+                  input: part.state?.input || {},
+                  timestamp: Date.now(),
+                  durationMs: part.state?.time
+                    ? (part.state.time.end - part.state.time.start) * 1000
+                    : 0,
+                  success: true,
+                  result: part.state?.output
+                    ? String(part.state.output).substring(0, 500)
+                    : undefined,
+                });
+              }
+              options.onEvent?.({
+                type: 'tool_end',
+                toolId: callID,
+                success: true,
+                durationMs: toolCalls.find((t) => t.id === callID)?.durationMs || 0,
+              });
+            } else if (status === 'error') {
+              const existing = toolCalls.find((t) => t.id === callID);
+              if (existing) {
+                existing.success = false;
+                existing.durationMs = Date.now() - existing.timestamp;
+              }
+              options.onEvent?.({
+                type: 'tool_end',
+                toolId: callID,
+                success: false,
+                durationMs: existing?.durationMs || 0,
+              });
+            }
+          } else if (part.type === 'reasoning') {
+            const text = props.delta || part.text || '';
+            if (text) {
+              options.onEvent?.({ type: 'thinking', text });
+            }
+          } else if (part.type === 'step-finish') {
+            numTurns++;
+            // Accumulate per-step tokens/cost
+            if (part.tokens) {
+              totalTokens.input += part.tokens.input || 0;
+              totalTokens.output += part.tokens.output || 0;
+              totalTokens.cacheRead += part.tokens.cache?.read || 0;
+              totalTokens.cacheWrite += part.tokens.cache?.write || 0;
+              totalTokens.total += part.tokens.total || 0;
+            }
+            if (part.cost) {
+              totalCost += part.cost;
+            }
           }
+        } else if (eventType === 'message.updated') {
+          // A full message update — extract final info from here
+          const props = event.properties || event.data;
+          const info = props?.info;
+          if (info?.providerID && info?.modelID) {
+            model = `${info.providerID}/${info.modelID}`;
+          }
+          // Use message-level tokens as authoritative total if available
+          if (info?.tokens?.total) {
+            totalTokens = {
+              input: info.tokens.input || totalTokens.input,
+              output: info.tokens.output || totalTokens.output,
+              cacheRead: info.tokens.cache?.read || totalTokens.cacheRead,
+              cacheWrite: info.tokens.cache?.write || totalTokens.cacheWrite,
+              total: info.tokens.total,
+            };
+          }
+          if (info?.cost !== undefined) {
+            totalCost = info.cost;
+          }
+          // Extract final answer text from message parts if we haven't captured it via deltas
+          if (props?.parts && !answer) {
+            for (const p of props.parts) {
+              if (p.type === 'text' && p.text) {
+                answer += p.text;
+              }
+            }
+          }
+        } else if (eventType === 'session.status') {
+          const props = event.properties || event.data;
+          const status = props?.status;
+          if (status?.type === 'idle') {
+            // Agent finished processing
+            options.onEvent?.({ type: 'status', message: 'Session idle — agent finished' });
+            break;
+          } else if (status?.type === 'busy') {
+            options.onEvent?.({ type: 'status', message: 'Agent working...' });
+          } else if (status?.type === 'retry') {
+            options.onEvent?.({
+              type: 'status',
+              message: `Retrying (attempt ${status.attempt}): ${status.message}`,
+            });
+          }
+        } else if (eventType === 'session.error') {
+          const props = event.properties || event.data;
+          const errMsg = props?.error?.message || JSON.stringify(props?.error) || 'Unknown error';
+          options.onEvent?.({ type: 'error', message: errMsg, code: 'SESSION_ERROR' });
         }
       }
 
-      const info = response.info || {};
-      const tokens = {
-        inputTokens: info.tokens?.input || 0,
-        outputTokens: info.tokens?.output || 0,
-        cacheReadTokens: info.tokens?.cache?.read || 0,
-        cacheWriteTokens: info.tokens?.cache?.write || 0,
-        totalTokens: info.tokens?.total || 0,
-      };
-
-      if (info.providerID && info.modelID) {
-        model = `${info.providerID}/${info.modelID}`;
+      // If answer is still empty, fetch the final messages from the session
+      if (!answer) {
+        const messagesResult = await client.session.messages({
+          path: { id: sessionId },
+        });
+        if (messagesResult.data) {
+          const messages = messagesResult.data as any[];
+          // Find the last assistant message
+          for (let i = messages.length - 1; i >= 0; i--) {
+            const msg = messages[i];
+            if (msg.role === 'assistant' && msg.parts) {
+              for (const p of msg.parts) {
+                if (p.type === 'text' && p.text) {
+                  answer += p.text;
+                }
+              }
+              break;
+            }
+          }
+        }
       }
 
       const result: AgentResult = {
         answer,
         success: true,
-        timedOut: false,
+        timedOut: Date.now() > deadline,
         durationMs: Date.now() - runStartTime,
-        tokens,
-        costUsd: info.cost || 0,
-        numTurns: 1,
+        tokens: {
+          inputTokens: totalTokens.input,
+          outputTokens: totalTokens.output,
+          cacheReadTokens: totalTokens.cacheRead,
+          cacheWriteTokens: totalTokens.cacheWrite,
+          totalTokens: totalTokens.total,
+        },
+        costUsd: totalCost,
+        numTurns: numTurns || 1,
         toolCalls,
         toolsUsed: [...new Set(toolCalls.map((t) => t.name))],
         model,

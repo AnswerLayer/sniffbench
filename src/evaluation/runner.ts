@@ -12,6 +12,7 @@ import * as path from 'path';
 import * as os from 'os';
 import {
   Case,
+  CaseFile,
   CaseResult,
   CriterionResult,
   EvaluatorResult,
@@ -239,6 +240,9 @@ async function runSingleCase(
         throw new Error(`Agent execution failed: ${agentResult.error}`);
       }
 
+      // Snapshot files the agent produced (before rubric evaluation)
+      const agentFiles = snapshotFiles(tempDir, caseData.files);
+
       // Evaluate using the rubric
       options.onProgress?.({
         type: 'validating',
@@ -275,6 +279,7 @@ async function runSingleCase(
               total: agentResult.tokens.totalTokens,
             }
           : undefined,
+        agentFiles,
         durationMs,
         timestamp: new Date(),
       };
@@ -463,4 +468,71 @@ async function installDependencies(
     // Check for go.mod
     await sandbox.exec('test -f go.mod && go mod download || true');
   }
+}
+
+/**
+ * Snapshot all files in the workspace after the agent runs.
+ * Compares against the original case files to flag which ones changed.
+ * Reads directly from the host tempDir (bind-mounted into the sandbox).
+ */
+function snapshotFiles(
+  tempDir: string,
+  originalFiles?: CaseFile[]
+): { path: string; content: string; changed: boolean }[] {
+  const results: { path: string; content: string; changed: boolean }[] = [];
+  const origMap = new Map<string, string>();
+
+  // Build map of original file contents for comparison
+  if (originalFiles) {
+    for (const f of originalFiles) {
+      if (f.content !== undefined) {
+        origMap.set(f.path, f.content);
+      }
+    }
+  }
+
+  // Walk the temp directory and collect all files
+  function walk(dir: string, prefix: string) {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const relPath = prefix ? `${prefix}/${entry.name}` : entry.name;
+      const fullPath = path.join(dir, entry.name);
+
+      // Skip common non-essential directories
+      if (entry.isDirectory()) {
+        if (['node_modules', '.git', '__pycache__', '.pytest_cache', 'venv', '.venv'].includes(entry.name)) {
+          continue;
+        }
+        walk(fullPath, relPath);
+        continue;
+      }
+
+      if (!entry.isFile()) continue;
+
+      // Skip binary and large files
+      try {
+        const stat = fs.statSync(fullPath);
+        if (stat.size > 100_000) continue; // Skip files over 100KB
+      } catch {
+        continue;
+      }
+
+      try {
+        const content = fs.readFileSync(fullPath, 'utf-8');
+        const original = origMap.get(relPath);
+        const changed = original === undefined || original !== content;
+        results.push({ path: relPath, content, changed });
+      } catch {
+        // Skip files that can't be read as UTF-8
+      }
+    }
+  }
+
+  walk(tempDir, '');
+  return results;
 }

@@ -472,6 +472,9 @@ export interface CaseResult {
   /** Token usage */
   agentTokens?: { input: number; output: number; total: number };
 
+  /** Files produced by the agent (snapshot of workspace after agent runs) */
+  agentFiles?: { path: string; content: string; changed: boolean }[];
+
   /** Total duration in milliseconds */
   durationMs: number;
 
