@@ -175,7 +175,16 @@ export class OpencodeAgent implements AgentWrapper {
       options.onEvent?.({ type: 'start', timestamp: runStartTime, model });
 
       // Subscribe to SSE events BEFORE sending the prompt so we capture everything
-      const eventResult = await client.event.subscribe({});
+      // event.subscribe() returns ServerSentEventsResult directly (not { data, error })
+      const sseResult = await client.event.subscribe({}) as any;
+      const stream: AsyncIterable<any> | undefined =
+        sseResult?.stream || sseResult?.data?.stream || sseResult?.data;
+
+      if (!stream) {
+        throw new Error(
+          `Event stream not available — subscribe() returned: ${JSON.stringify(Object.keys(sseResult || {}))}`,
+        );
+      }
 
       // Send prompt asynchronously (returns immediately, events stream the progress)
       const asyncResult = await client.session.promptAsync({
@@ -195,11 +204,6 @@ export class OpencodeAgent implements AgentWrapper {
       let totalTokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
       let totalCost = 0;
       const deadline = Date.now() + timeoutMs - 5000;
-
-      const stream = eventResult.data as AsyncIterable<any> | undefined;
-      if (!stream) {
-        throw new Error('Event stream not available — SDK returned no data from event.subscribe()');
-      }
 
       for await (const event of stream) {
         if (Date.now() > deadline) {
