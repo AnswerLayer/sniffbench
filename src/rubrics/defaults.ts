@@ -30,7 +30,7 @@ export const defaultRubric: Rubric = {
         {
           type: 'command',
           name: 'Tests pass',
-          run: 'npm test 2>/dev/null || pytest 2>/dev/null || go test ./... 2>/dev/null || echo "No test runner found"',
+          run: 'npm test 2>/dev/null || pytest 2>/dev/null || go test ./... 2>/dev/null || exit 1',
           partialCredit: true,
           passThreshold: 1.0,
         },

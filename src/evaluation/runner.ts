@@ -333,18 +333,18 @@ async function evaluateWithRubric(
         };
       } else if (evaluator.type === 'pattern') {
         // Run pattern evaluator (check for matches in files)
-        // For now, just pass - full implementation will use grep/find
+        // Default to fail until fully implemented
         evalResult = {
-          passed: true,
-          score: 1.0,
-          evidence: 'Pattern check not fully implemented',
+          passed: false,
+          score: 0.0,
+          evidence: 'Pattern check not yet implemented',
         };
       } else {
-        // Other evaluator types (llm_judge, benchmark, etc.) - placeholder
+        // Other evaluator types (llm_judge, benchmark, etc.) - not implemented
         evalResult = {
-          passed: true,
-          score: 1.0,
-          evidence: 'Evaluator type not yet implemented',
+          passed: false,
+          score: 0.0,
+          evidence: `Evaluator type '${evaluator.type}' not yet implemented`,
         };
       }
 
@@ -364,8 +364,10 @@ async function evaluateWithRubric(
     }
 
     // Average score for this criterion
-    const rawScore = evaluatorCount > 0 ? criterionScore / evaluatorCount : 1.0;
-    const weightedScore = (rawScore * criterion.weight) / 100;
+    // If no non-optional evaluators ran, this criterion doesn't participate in scoring
+    const hasRequiredEvaluators = evaluatorCount > 0;
+    const rawScore = hasRequiredEvaluators ? criterionScore / evaluatorCount : 0.0;
+    const weightedScore = hasRequiredEvaluators ? (rawScore * criterion.weight) / 100 : 0;
     const allPassed = evaluatorResults.filter((e) => !e.passed).length === 0;
 
     criteriaResults.push({
@@ -378,11 +380,14 @@ async function evaluateWithRubric(
     });
 
     totalWeightedScore += weightedScore;
-    _totalWeight += criterion.weight;
+    // Only count weight for criteria that had non-optional evaluators
+    if (hasRequiredEvaluators) {
+      _totalWeight += criterion.weight;
+    }
   }
 
-  // Calculate overall score (sum of weighted scores, as percentage)
-  const overallScore = totalWeightedScore * 100;
+  // Normalize score by participating weight (criteria with only optional evaluators are excluded)
+  const overallScore = _totalWeight > 0 ? (totalWeightedScore / _totalWeight) * 100 : 0;
 
   // Determine pass/fail (default threshold: 70%)
   const passThreshold = 70;
