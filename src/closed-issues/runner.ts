@@ -19,6 +19,7 @@ import { Variant } from '../variants/types';
 import { runInVariant, RunOptions, VariantRunResult } from '../sandbox/variant-runner';
 import { collectRequiredEnvVars } from '../sandbox/variant-container';
 import { checkMissingEnvVars, getEnvVars, getEnvFilePath } from '../utils/env';
+import { getAgent, DEFAULT_AGENT } from '../agents/registry';
 
 // =============================================================================
 // Types
@@ -27,6 +28,12 @@ import { checkMissingEnvVars, getEnvVars, getEnvFilePath } from '../utils/env';
 export interface RunCaseOptions {
   /** The closed issue case to run */
   caseData: ClosedIssueCase;
+
+  /** Agent name to use (default: from DEFAULT_AGENT) */
+  agent?: string;
+
+  /** Model to use (agent-specific) */
+  model?: string;
 
   /** Optional variant to use (runs in container) */
   variant?: Variant;
@@ -102,6 +109,8 @@ const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 export async function runClosedIssueCase(options: RunCaseOptions): Promise<RunCaseResult> {
   const {
     caseData,
+    agent: agentName = DEFAULT_AGENT,
+    model,
     variant,
     projectRoot = process.cwd(),
     timeoutMs = DEFAULT_TIMEOUT_MS,
@@ -163,19 +172,36 @@ export async function runClosedIssueCase(options: RunCaseOptions): Promise<RunCa
         return createErrorResult(caseData.id, 'Agent timed out', startTime);
       }
     } else {
-      // Run with local claude command
-      const result = await runAgentLocally({
-        prompt: caseData.prompt,
-        workdir: tempDir,
+      // Run through agent wrapper (supports opencode, claude-code, etc.)
+      const agent = getAgent(agentName);
+      const agentResult = await agent.run(caseData.prompt, {
+        cwd: tempDir,
+        model,
         timeoutMs,
-        stream,
-        onOutput,
+        permissionMode: 'acceptEdits',
+        onEvent: stream ? (event) => {
+          if (event.type === 'text_delta' && onOutput) {
+            onOutput('stdout', event.text);
+          } else if (event.type === 'status' && onOutput) {
+            onOutput('stderr', event.message + '\n');
+          }
+        } : undefined,
       });
 
-      agentOutput = result.output;
+      agentOutput = agentResult.answer;
+      if (agentResult.tokens) {
+        tokens = {
+          inputTokens: agentResult.tokens.inputTokens,
+          outputTokens: agentResult.tokens.outputTokens,
+          cacheReadTokens: agentResult.tokens.cacheReadTokens,
+          cacheWriteTokens: agentResult.tokens.cacheWriteTokens,
+          totalTokens: agentResult.tokens.totalTokens,
+        };
+      }
+      costUsd = agentResult.costUsd;
 
-      if (!result.success) {
-        return createErrorResult(caseData.id, result.error || 'Agent failed', startTime);
+      if (!agentResult.success) {
+        return createErrorResult(caseData.id, agentResult.error || 'Agent failed', startTime);
       }
     }
 

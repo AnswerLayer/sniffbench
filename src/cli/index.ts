@@ -317,6 +317,8 @@ closedIssuesCmd
   .command('run')
   .description('Run agent on closed-issue cases and compare to reference solutions')
   .option('-c, --case <id>', 'Specific case ID to run')
+  .option('--agent <name>', 'Agent to evaluate', DEFAULT_AGENT)
+  .option('--model <model>', 'Model to use (agent-specific)')
   .option('--variant <name>', 'Use a specific variant container (default: active variant)')
   .option('--local', 'Run with local claude command instead of variant container')
   .option('-t, --timeout <seconds>', 'Timeout per case in seconds', '600')
