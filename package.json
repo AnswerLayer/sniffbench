@@ -9,7 +9,7 @@
     "sniff": "dist/cli/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && cp src/agents/opencode-sdk.mjs dist/agents/opencode-sdk.mjs",
     "dev": "tsc --watch",
     "prepublishOnly": "npm run build",
     "test": "jest",

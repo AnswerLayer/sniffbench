@@ -3,6 +3,6 @@
  * This file is ESM and can properly import the SDK which is ESM-only
  */
 
-import { createOpencode } from '@opencode-ai/sdk';
+import { createOpencodeClient } from '@opencode-ai/sdk';
 
-export { createOpencode };
+export { createOpencodeClient };
