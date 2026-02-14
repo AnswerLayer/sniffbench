@@ -44,7 +44,7 @@ import {
   ClosedIssueCaseRun,
   Run,
 } from '../../runs';
-import { getAgent } from '../../agents';
+import { getAgent, DEFAULT_AGENT } from '../../agents';
 
 // =============================================================================
 // Command Interfaces
@@ -569,7 +569,7 @@ async function saveClosedIssuesRun(
   label?: string
 ): Promise<string> {
   // Capture agent config
-  const agent = getAgent('claude-code');
+  const agent = getAgent(DEFAULT_AGENT);
   const agentConfig = await capturePartialAgentConfig(agent, projectRoot);
 
   // Link to variant if used

@@ -8,6 +8,9 @@ import { AgentWrapper, AgentRegistry } from './types';
 import { createClaudeCodeAgent } from './claude-code';
 import { createOpencodeAgent } from './opencode';
 
+/** Default agent used when none is specified on the CLI */
+export const DEFAULT_AGENT = 'claude-code';
+
 /**
  * Default agent registry implementation
  */

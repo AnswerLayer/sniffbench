@@ -42,6 +42,7 @@ import {
   closedIssuesRunCommand,
   closedIssuesCompareCommand,
 } from './commands/closed-issues';
+import { DEFAULT_AGENT } from '../agents/registry';
 
 const program = new Command();
 
@@ -59,7 +60,7 @@ program
 program
   .command('run')
   .description('Run evaluation suite on specified agent')
-  .option('--agent <name>', 'Agent to evaluate (claude-code, cursor, aider)', 'claude-code')
+  .option('--agent <name>', 'Agent to evaluate (claude-code, opencode, cursor, aider)', DEFAULT_AGENT)
   .option('--cases <cases>', 'Specific test cases to run (comma-separated)')
   .option('--output <dir>', 'Output directory for results', 'results')
   .option('--timeout <seconds>', 'Timeout per case in seconds', '300')
@@ -137,7 +138,7 @@ program
 program
   .command('interview')
   .description('Run comprehension interview to test agent understanding')
-  .option('--agent <name>', 'Agent to evaluate', 'claude-code')
+  .option('--agent <name>', 'Agent to evaluate', DEFAULT_AGENT)
   .option('--cases <cases>', 'Specific case IDs to run (comma-separated)')
   .option('--output <dir>', 'Output directory for results', 'results')
   .option('--compare', 'Compare new responses against existing baselines')
@@ -185,7 +186,7 @@ variantCmd
   .argument('<name>', 'Variant name (e.g., "control", "with-linear-mcp")')
   .option('-d, --description <text>', 'Description of the variant')
   .option('-c, --changes <changes...>', 'List of explicit changes in this variant')
-  .option('-a, --agent <name>', 'Agent type to capture config for', 'claude-code')
+  .option('-a, --agent <name>', 'Agent type to capture config for', DEFAULT_AGENT)
   .option('-b, --build', 'Build container image after registration')
   .option('-f, --force', 'Overwrite existing variant with same name')
   .action((name, opts) => variantRegisterCommand(name, opts));
