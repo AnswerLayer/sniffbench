@@ -5,7 +5,7 @@
  * to the reference PR that originally closed the issue.
  */
 
-import { execSync, spawn } from 'child_process';
+import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -358,79 +358,6 @@ async function runAgentWithVariant(options: {
   };
 
   return runInVariant(options.variant, options.prompt, runOptions);
-}
-
-/**
- * Run agent locally using claude command
- */
-async function runAgentLocally(options: {
-  prompt: string;
-  workdir: string;
-  timeoutMs: number;
-  stream?: boolean;
-  onOutput?: (type: 'stdout' | 'stderr', data: string) => void;
-}): Promise<{ success: boolean; output: string; error?: string }> {
-  return new Promise((resolve) => {
-    let output = '';
-    let stderr = '';
-    let timedOut = false;
-
-    const proc = spawn('claude', ['--print', '--dangerously-skip-permissions', options.prompt], {
-      cwd: options.workdir,
-      env: {
-        ...process.env,
-        // Set HOME to a temp location to avoid polluting user's config
-        HOME: options.workdir,
-      },
-    });
-
-    const timeoutId = setTimeout(() => {
-      timedOut = true;
-      proc.kill('SIGTERM');
-      setTimeout(() => proc.kill('SIGKILL'), 5000);
-    }, options.timeoutMs);
-
-    proc.stdout?.on('data', (data) => {
-      const str = data.toString();
-      output += str;
-      if (options.stream && options.onOutput) {
-        options.onOutput('stdout', str);
-      }
-    });
-
-    proc.stderr?.on('data', (data) => {
-      const str = data.toString();
-      stderr += str;
-      if (options.stream && options.onOutput) {
-        options.onOutput('stderr', str);
-      }
-    });
-
-    proc.on('close', (code) => {
-      clearTimeout(timeoutId);
-
-      if (timedOut) {
-        resolve({ success: false, output, error: 'Agent timed out' });
-        return;
-      }
-
-      if (code !== 0) {
-        resolve({
-          success: false,
-          output,
-          error: `Agent exited with code ${code}: ${stderr}`,
-        });
-        return;
-      }
-
-      resolve({ success: true, output });
-    });
-
-    proc.on('error', (error) => {
-      clearTimeout(timeoutId);
-      resolve({ success: false, output, error: error.message });
-    });
-  });
 }
 
 /**
