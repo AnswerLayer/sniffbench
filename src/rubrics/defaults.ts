@@ -30,7 +30,7 @@ export const defaultRubric: Rubric = {
         {
           type: 'command',
           name: 'Tests pass',
-          run: 'npm test 2>/dev/null || python *.test.py 2>/dev/null || python *_test.py 2>/dev/null || pytest 2>/dev/null || go test ./... 2>/dev/null || exit 1',
+          run: 'npm test 2>/dev/null || node *.test.js 2>/dev/null || python *.test.py 2>/dev/null || python *_test.py 2>/dev/null || pytest 2>/dev/null || go test ./... 2>/dev/null || exit 1',
           partialCredit: true,
           passThreshold: 1.0,
         },
@@ -114,7 +114,7 @@ export const minimalRubric: Rubric = {
         {
           type: 'command',
           name: 'Tests pass',
-          run: 'npm test 2>/dev/null || python *.test.py 2>/dev/null || python *_test.py 2>/dev/null || pytest 2>/dev/null || go test ./... 2>/dev/null || exit 1',
+          run: 'npm test 2>/dev/null || node *.test.js 2>/dev/null || python *.test.py 2>/dev/null || python *_test.py 2>/dev/null || pytest 2>/dev/null || go test ./... 2>/dev/null || exit 1',
           partialCredit: true,
         },
       ],
