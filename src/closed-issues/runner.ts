@@ -5,7 +5,7 @@
  * to the reference PR that originally closed the issue.
  */
 
-import { execSync, spawn } from 'child_process';
+import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -19,6 +19,7 @@ import { Variant } from '../variants/types';
 import { runInVariant, RunOptions, VariantRunResult } from '../sandbox/variant-runner';
 import { collectRequiredEnvVars } from '../sandbox/variant-container';
 import { checkMissingEnvVars, getEnvVars, getEnvFilePath } from '../utils/env';
+import { getAgent, DEFAULT_AGENT } from '../agents/registry';
 
 // =============================================================================
 // Types
@@ -27,6 +28,12 @@ import { checkMissingEnvVars, getEnvVars, getEnvFilePath } from '../utils/env';
 export interface RunCaseOptions {
   /** The closed issue case to run */
   caseData: ClosedIssueCase;
+
+  /** Agent name to use (default: from DEFAULT_AGENT) */
+  agent?: string;
+
+  /** Model to use (agent-specific) */
+  model?: string;
 
   /** Optional variant to use (runs in container) */
   variant?: Variant;
@@ -102,6 +109,8 @@ const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 export async function runClosedIssueCase(options: RunCaseOptions): Promise<RunCaseResult> {
   const {
     caseData,
+    agent: agentName = DEFAULT_AGENT,
+    model,
     variant,
     projectRoot = process.cwd(),
     timeoutMs = DEFAULT_TIMEOUT_MS,
@@ -163,19 +172,36 @@ export async function runClosedIssueCase(options: RunCaseOptions): Promise<RunCa
         return createErrorResult(caseData.id, 'Agent timed out', startTime);
       }
     } else {
-      // Run with local claude command
-      const result = await runAgentLocally({
-        prompt: caseData.prompt,
-        workdir: tempDir,
+      // Run through agent wrapper (supports opencode, claude-code, etc.)
+      const agent = getAgent(agentName);
+      const agentResult = await agent.run(caseData.prompt, {
+        cwd: tempDir,
+        model,
         timeoutMs,
-        stream,
-        onOutput,
+        permissionMode: 'acceptEdits',
+        onEvent: stream ? (event) => {
+          if (event.type === 'text_delta' && onOutput) {
+            onOutput('stdout', event.text);
+          } else if (event.type === 'status' && onOutput) {
+            onOutput('stderr', event.message + '\n');
+          }
+        } : undefined,
       });
 
-      agentOutput = result.output;
+      agentOutput = agentResult.answer;
+      if (agentResult.tokens) {
+        tokens = {
+          inputTokens: agentResult.tokens.inputTokens,
+          outputTokens: agentResult.tokens.outputTokens,
+          cacheReadTokens: agentResult.tokens.cacheReadTokens,
+          cacheWriteTokens: agentResult.tokens.cacheWriteTokens,
+          totalTokens: agentResult.tokens.totalTokens,
+        };
+      }
+      costUsd = agentResult.costUsd;
 
-      if (!result.success) {
-        return createErrorResult(caseData.id, result.error || 'Agent failed', startTime);
+      if (!agentResult.success) {
+        return createErrorResult(caseData.id, agentResult.error || 'Agent failed', startTime);
       }
     }
 
@@ -332,79 +358,6 @@ async function runAgentWithVariant(options: {
   };
 
   return runInVariant(options.variant, options.prompt, runOptions);
-}
-
-/**
- * Run agent locally using claude command
- */
-async function runAgentLocally(options: {
-  prompt: string;
-  workdir: string;
-  timeoutMs: number;
-  stream?: boolean;
-  onOutput?: (type: 'stdout' | 'stderr', data: string) => void;
-}): Promise<{ success: boolean; output: string; error?: string }> {
-  return new Promise((resolve) => {
-    let output = '';
-    let stderr = '';
-    let timedOut = false;
-
-    const proc = spawn('claude', ['--print', '--dangerously-skip-permissions', options.prompt], {
-      cwd: options.workdir,
-      env: {
-        ...process.env,
-        // Set HOME to a temp location to avoid polluting user's config
-        HOME: options.workdir,
-      },
-    });
-
-    const timeoutId = setTimeout(() => {
-      timedOut = true;
-      proc.kill('SIGTERM');
-      setTimeout(() => proc.kill('SIGKILL'), 5000);
-    }, options.timeoutMs);
-
-    proc.stdout?.on('data', (data) => {
-      const str = data.toString();
-      output += str;
-      if (options.stream && options.onOutput) {
-        options.onOutput('stdout', str);
-      }
-    });
-
-    proc.stderr?.on('data', (data) => {
-      const str = data.toString();
-      stderr += str;
-      if (options.stream && options.onOutput) {
-        options.onOutput('stderr', str);
-      }
-    });
-
-    proc.on('close', (code) => {
-      clearTimeout(timeoutId);
-
-      if (timedOut) {
-        resolve({ success: false, output, error: 'Agent timed out' });
-        return;
-      }
-
-      if (code !== 0) {
-        resolve({
-          success: false,
-          output,
-          error: `Agent exited with code ${code}: ${stderr}`,
-        });
-        return;
-      }
-
-      resolve({ success: true, output });
-    });
-
-    proc.on('error', (error) => {
-      clearTimeout(timeoutId);
-      resolve({ success: false, output, error: error.message });
-    });
-  });
 }
 
 /**

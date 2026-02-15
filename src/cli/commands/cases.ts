@@ -8,7 +8,7 @@ import { spawn } from 'child_process';
 import { box } from '../../utils/ui';
 import {
   loadCases,
-  getDefaultCasesDir,
+  getDefaultCasesDirs,
   listCategories,
   listLanguages,
   getCaseById,
@@ -37,9 +37,9 @@ export async function casesListCommand(options: CasesListOptions) {
   const spinner = ora('Loading cases...').start();
 
   try {
-    const casesDir = getDefaultCasesDir();
+    const casesDirs = getDefaultCasesDirs();
 
-    const cases = await loadCases(casesDir, {
+    const cases = await loadCases(casesDirs, {
       category: options.category,
       language: options.language,
       difficulty: options.difficulty as CaseDifficulty | undefined,
@@ -57,7 +57,7 @@ export async function casesListCommand(options: CasesListOptions) {
     if (cases.length === 0) {
       console.log(chalk.yellow('No cases found matching the criteria.'));
       console.log(chalk.dim('\nTip: Try running without filters, or add cases to:'));
-      console.log(chalk.cyan(`  ${casesDir}`));
+      console.log(chalk.cyan(`  ${casesDirs.join(' or ')}`));
       return;
     }
 
@@ -97,8 +97,8 @@ export async function casesShowCommand(options: CasesShowOptions) {
   const spinner = ora('Loading case...').start();
 
   try {
-    const casesDir = getDefaultCasesDir();
-    const caseData = await getCaseById(casesDir, options.id);
+    const casesDirs = getDefaultCasesDirs();
+    const caseData = await getCaseById(casesDirs, options.id);
 
     spinner.stop();
 
@@ -141,8 +141,8 @@ export async function casesCategoriesCommand() {
   const spinner = ora('Loading categories...').start();
 
   try {
-    const casesDir = getDefaultCasesDir();
-    const categories = await listCategories(casesDir);
+    const casesDirs = getDefaultCasesDirs();
+    const categories = await listCategories(casesDirs);
 
     spinner.stop();
 
@@ -169,8 +169,8 @@ export async function casesLanguagesCommand() {
   const spinner = ora('Loading languages...').start();
 
   try {
-    const casesDir = getDefaultCasesDir();
-    const languages = await listLanguages(casesDir);
+    const casesDirs = getDefaultCasesDirs();
+    const languages = await listLanguages(casesDirs);
 
     spinner.stop();
 

@@ -44,7 +44,7 @@ import {
   ClosedIssueCaseRun,
   Run,
 } from '../../runs';
-import { getAgent } from '../../agents';
+import { getAgent, DEFAULT_AGENT } from '../../agents';
 
 // =============================================================================
 // Command Interfaces
@@ -71,6 +71,8 @@ interface ListCommandOptions {
 
 interface RunCommandOptions {
   case?: string;
+  agent?: string;
+  model?: string;
   variant?: string;
   local?: boolean;
   timeout?: string;
@@ -431,6 +433,8 @@ export async function closedIssuesRunCommand(options: RunCommandOptions) {
 
       const result = await runClosedIssueCase({
         caseData: c,
+        agent: options.agent,
+        model: options.model,
         variant,
         projectRoot: process.cwd(),
         timeoutMs,
@@ -466,7 +470,7 @@ export async function closedIssuesRunCommand(options: RunCommandOptions) {
     }
 
     // Save run to store
-    const runId = await saveClosedIssuesRun(projectRoot, results, variant, options.run);
+    const runId = await saveClosedIssuesRun(projectRoot, results, variant, options.run, options.agent);
 
     // Output JSON if requested
     if (options.json) {
@@ -566,10 +570,11 @@ async function saveClosedIssuesRun(
   projectRoot: string,
   results: RunCaseResult[],
   variant: Variant | undefined,
-  label?: string
+  label?: string,
+  agentName?: string
 ): Promise<string> {
   // Capture agent config
-  const agent = getAgent('claude-code');
+  const agent = getAgent(agentName || DEFAULT_AGENT);
   const agentConfig = await capturePartialAgentConfig(agent, projectRoot);
 
   // Link to variant if used

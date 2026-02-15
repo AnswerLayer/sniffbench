@@ -18,7 +18,7 @@ import {
   hashAgentConfig,
   Variant,
 } from '../../variants';
-import { getAgent } from '../../agents';
+import { getAgent, DEFAULT_AGENT } from '../../agents';
 import {
   buildVariantImage,
   variantImageExists,
@@ -90,8 +90,7 @@ export async function variantRegisterCommand(
     console.log(chalk.dim(`  Replacing existing variant "${name}"...`));
   }
 
-  // Get the agent (defaults to claude-code)
-  const agentName = options.agent || 'claude-code';
+  const agentName = options.agent || DEFAULT_AGENT;
   const agent = getAgent(agentName);
 
   // Capture current ambient config with full MCP details

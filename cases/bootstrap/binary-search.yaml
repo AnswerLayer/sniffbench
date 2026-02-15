@@ -1,0 +1,91 @@
+id: bootstrap-005
+title: "Binary Search Implementation"
+prompt: |
+  Complete the binary_search function implementation. The function
+  should find the index of a target value in a sorted array, or
+  return -1 if not found.
+
+  Binary search must:
+  - Run in O(log n) time complexity
+  - Handle empty arrays
+  - Handle values not present in the array
+  - Work with any comparable values
+
+  Run: python binary_search.test.py
+  Make all tests pass.
+
+source: bootstrap
+category: codefix
+language: python
+difficulty: medium
+
+tags:
+  - python
+  - algorithms
+  - binary-search
+
+files:
+  - path: binary_search.py
+    content: |
+      def binary_search(arr, target):
+          """
+          Perform binary search on a sorted array.
+
+          Args:
+              arr: Sorted list of comparable elements
+              target: Value to search for
+
+          Returns:
+              Index of target if found, -1 otherwise
+
+          Time complexity: O(log n)
+          """
+          # TODO: Implement binary search
+          pass
+
+  - path: binary_search.test.py
+    content: |
+      import unittest
+      from binary_search import binary_search
+
+      class TestBinarySearch(unittest.TestCase):
+
+          def test_found_elements(self):
+              arr = [1, 3, 5, 7, 9, 11, 13, 15]
+              self.assertEqual(binary_search(arr, 7), 3)
+              self.assertEqual(binary_search(arr, 1), 0)
+              self.assertEqual(binary_search(arr, 15), 7)
+              self.assertEqual(binary_search(arr, 9), 4)
+
+          def test_not_found(self):
+              arr = [1, 3, 5, 7, 9]
+              self.assertEqual(binary_search(arr, 2), -1)
+              self.assertEqual(binary_search(arr, 6), -1)
+              self.assertEqual(binary_search(arr, 10), -1)
+
+          def test_empty_array(self):
+              self.assertEqual(binary_search([], 5), -1)
+
+          def test_single_element(self):
+              arr = [42]
+              self.assertEqual(binary_search(arr, 42), 0)
+              self.assertEqual(binary_search(arr, 0), -1)
+
+          def test_two_elements(self):
+              arr = [1, 2]
+              self.assertEqual(binary_search(arr, 1), 0)
+              self.assertEqual(binary_search(arr, 2), 1)
+
+          def test_strings(self):
+              arr = ['apple', 'banana', 'cherry', 'date']
+              self.assertEqual(binary_search(arr, 'cherry'), 2)
+              self.assertEqual(binary_search(arr, 'grape'), -1)
+
+          def test_large_array(self):
+              arr = list(range(1000))
+              self.assertEqual(binary_search(arr, 42), 42)
+              self.assertEqual(binary_search(arr, 999), 999)
+              self.assertEqual(binary_search(arr, 1000), -1)
+
+      if __name__ == '__main__':
+          unittest.main()

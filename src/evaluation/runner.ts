@@ -12,6 +12,7 @@ import * as path from 'path';
 import * as os from 'os';
 import {
   Case,
+  CaseFile,
   CaseResult,
   CriterionResult,
   EvaluatorResult,
@@ -22,10 +23,15 @@ import {
 import { createSandboxManager, checkDocker, RECOMMENDED_IMAGES } from '../sandbox';
 import { Sandbox, SandboxConfig } from '../sandbox/types';
 import { getRubricRegistry } from '../rubrics/loader';
+import { getAgent } from '../agents/registry';
+import type { AgentResult } from '../agents/types';
 
 export interface RunnerOptions {
   /** Agent being evaluated (for logging) */
   agent: string;
+
+  /** Model to use (passed to agent) */
+  model?: string;
 
   /** Timeout per case in seconds */
   timeoutSeconds?: number;
@@ -213,6 +219,30 @@ async function runSingleCase(
       // Install dependencies if needed
       await installDependencies(sandbox, caseData.language, options, caseIndex, totalCases, caseData.id);
 
+      // Run the agent to attempt to solve the case
+      options.onProgress?.({
+        type: 'running',
+        caseId: caseData.id,
+        caseIndex,
+        totalCases,
+        message: 'Running agent...',
+      });
+
+      const agent = getAgent(options.agent);
+      const agentResult: AgentResult = await agent.run(caseData.prompt, {
+        cwd: tempDir,
+        model: options.model,
+        timeoutMs: (options.timeoutSeconds || 300) * 1000,
+        permissionMode: 'acceptEdits',
+      });
+
+      if (!agentResult.success) {
+        throw new Error(`Agent execution failed: ${agentResult.error}`);
+      }
+
+      // Snapshot files the agent produced (before rubric evaluation)
+      const agentFiles = snapshotFiles(tempDir, caseData.files);
+
       // Evaluate using the rubric
       options.onProgress?.({
         type: 'validating',
@@ -230,11 +260,26 @@ async function runSingleCase(
         caseId: caseData.id,
         caseIndex,
         totalCases,
-        message: result.passed ? `Passed (${(result.score * 100).toFixed(0)}%)` : `Failed (${(result.score * 100).toFixed(0)}%)`,
+        message: result.passed ? `Passed (${Math.round(result.score)}%)` : `Failed (${Math.round(result.score)}%)`,
       });
 
       return {
         ...result,
+        agentResponse: agentResult.answer,
+        agentToolCalls: agentResult.toolCalls.map((t) => ({
+          name: t.name,
+          durationMs: t.durationMs,
+          success: t.success,
+        })),
+        agentModel: agentResult.model,
+        agentTokens: agentResult.tokens
+          ? {
+              input: agentResult.tokens.inputTokens,
+              output: agentResult.tokens.outputTokens,
+              total: agentResult.tokens.totalTokens,
+            }
+          : undefined,
+        agentFiles,
         durationMs,
         timestamp: new Date(),
       };
@@ -311,18 +356,18 @@ async function evaluateWithRubric(
         };
       } else if (evaluator.type === 'pattern') {
         // Run pattern evaluator (check for matches in files)
-        // For now, just pass - full implementation will use grep/find
+        // Default to fail until fully implemented
         evalResult = {
-          passed: true,
-          score: 1.0,
-          evidence: 'Pattern check not fully implemented',
+          passed: false,
+          score: 0.0,
+          evidence: 'Pattern check not yet implemented',
         };
       } else {
-        // Other evaluator types (llm_judge, benchmark, etc.) - placeholder
+        // Other evaluator types (llm_judge, benchmark, etc.) - not implemented
         evalResult = {
-          passed: true,
-          score: 1.0,
-          evidence: 'Evaluator type not yet implemented',
+          passed: false,
+          score: 0.0,
+          evidence: `Evaluator type '${evaluator.type}' not yet implemented`,
         };
       }
 
@@ -342,8 +387,10 @@ async function evaluateWithRubric(
     }
 
     // Average score for this criterion
-    const rawScore = evaluatorCount > 0 ? criterionScore / evaluatorCount : 1.0;
-    const weightedScore = (rawScore * criterion.weight) / 100;
+    // If no non-optional evaluators ran, this criterion doesn't participate in scoring
+    const hasRequiredEvaluators = evaluatorCount > 0;
+    const rawScore = hasRequiredEvaluators ? criterionScore / evaluatorCount : 0.0;
+    const weightedScore = hasRequiredEvaluators ? (rawScore * criterion.weight) / 100 : 0;
     const allPassed = evaluatorResults.filter((e) => !e.passed).length === 0;
 
     criteriaResults.push({
@@ -356,11 +403,18 @@ async function evaluateWithRubric(
     });
 
     totalWeightedScore += weightedScore;
-    _totalWeight += criterion.weight;
+    // Only count weight for criteria that had non-optional evaluators
+    if (hasRequiredEvaluators) {
+      _totalWeight += criterion.weight;
+    }
   }
 
-  // Calculate overall score (sum of weighted scores, as percentage)
-  const overallScore = totalWeightedScore * 100;
+  // Normalize score by participating weight (criteria with only optional evaluators are excluded)
+  // Each criterion's weightedScore = rawScore * weight / 100, so totalWeightedScore
+  // is a fraction of 1.0 when all weights sum to 100. When some criteria are excluded,
+  // rescale so the participating criteria fill the full 0-100% range.
+  const participatingFraction = _totalWeight / 100;
+  const overallScore = participatingFraction > 0 ? (totalWeightedScore / participatingFraction) * 100 : 0;
 
   // Determine pass/fail (default threshold: 70%)
   const passThreshold = 70;
@@ -414,4 +468,71 @@ async function installDependencies(
     // Check for go.mod
     await sandbox.exec('test -f go.mod && go mod download || true');
   }
+}
+
+/**
+ * Snapshot all files in the workspace after the agent runs.
+ * Compares against the original case files to flag which ones changed.
+ * Reads directly from the host tempDir (bind-mounted into the sandbox).
+ */
+function snapshotFiles(
+  tempDir: string,
+  originalFiles?: CaseFile[]
+): { path: string; content: string; changed: boolean }[] {
+  const results: { path: string; content: string; changed: boolean }[] = [];
+  const origMap = new Map<string, string>();
+
+  // Build map of original file contents for comparison
+  if (originalFiles) {
+    for (const f of originalFiles) {
+      if (f.content !== undefined) {
+        origMap.set(f.path, f.content);
+      }
+    }
+  }
+
+  // Walk the temp directory and collect all files
+  function walk(dir: string, prefix: string) {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const relPath = prefix ? `${prefix}/${entry.name}` : entry.name;
+      const fullPath = path.join(dir, entry.name);
+
+      // Skip common non-essential directories
+      if (entry.isDirectory()) {
+        if (['node_modules', '.git', '__pycache__', '.pytest_cache', 'venv', '.venv'].includes(entry.name)) {
+          continue;
+        }
+        walk(fullPath, relPath);
+        continue;
+      }
+
+      if (!entry.isFile()) continue;
+
+      // Skip binary and large files
+      try {
+        const stat = fs.statSync(fullPath);
+        if (stat.size > 100_000) continue; // Skip files over 100KB
+      } catch {
+        continue;
+      }
+
+      try {
+        const content = fs.readFileSync(fullPath, 'utf-8');
+        const original = origMap.get(relPath);
+        const changed = original === undefined || original !== content;
+        results.push({ path: relPath, content, changed });
+      } catch {
+        // Skip files that can't be read as UTF-8
+      }
+    }
+  }
+
+  walk(tempDir, '');
+  return results;
 }

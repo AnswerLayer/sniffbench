@@ -1,0 +1,97 @@
+id: bootstrap-004
+title: "Palindrome Checker"
+prompt: |
+  Implement a palindrome checker that works correctly across
+  different edge cases. The tests are already written - you need
+  to make them all pass.
+
+  A palindrome reads the same forwards and backwards.
+  You should:
+  - Ignore case
+  - Ignore non-alphanumeric characters
+  - Handle empty strings as valid palindromes
+
+  Run: node palindrome.test.js
+  Fix the implementation until all tests pass.
+
+source: bootstrap
+category: codefix
+language: javascript
+difficulty: easy
+
+tags:
+  - javascript
+  - algorithms
+  - string-manipulation
+
+files:
+  - path: palindrome.js
+    content: |
+      function isPalindrome(str) {
+        // TODO: Implement properly
+        return str === str.split('').reverse().join('');
+      }
+
+      module.exports = { isPalindrome };
+
+  - path: palindrome.test.js
+    content: |
+      const { isPalindrome } = require('./palindrome');
+
+      function test(name, fn) {
+        try {
+          fn();
+          console.log(`✓ ${name}`);
+        } catch (err) {
+          console.log(`✗ ${name}: ${err.message}`);
+          process.exit(1);
+        }
+      }
+
+      function assertEqual(actual, expected, message) {
+        if (actual !== expected) {
+          throw new Error(message || `Expected ${expected}, got ${actual}`);
+        }
+      }
+
+      // Basic palindromes
+      test('racecar is palindrome', () => {
+        assertEqual(isPalindrome('racecar'), true);
+      });
+
+      test('hello is not palindrome', () => {
+        assertEqual(isPalindrome('hello'), false);
+      });
+
+      // Case insensitive
+      test('RaceCar is palindrome', () => {
+        assertEqual(isPalindrome('RaceCar'), true);
+      });
+
+      test('A man a plan a canal Panama', () => {
+        assertEqual(isPalindrome('A man a plan a canal Panama'), true);
+      });
+
+      // With spaces and punctuation
+      test('Was it a car or a cat I saw', () => {
+        assertEqual(isPalindrome('Was it a car or a cat I saw'), true);
+      });
+
+      // Edge cases
+      test('empty string', () => {
+        assertEqual(isPalindrome(''), true);
+      });
+
+      test('single character', () => {
+        assertEqual(isPalindrome('a'), true);
+      });
+
+      test('numeric', () => {
+        assertEqual(isPalindrome('12321'), true);
+      });
+
+      test('numeric with letters', () => {
+        assertEqual(isPalindrome('1a2 3 2a1'), true);
+      });
+
+      console.log('All tests passed!');

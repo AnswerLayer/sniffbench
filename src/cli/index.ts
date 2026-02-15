@@ -42,6 +42,7 @@ import {
   closedIssuesRunCommand,
   closedIssuesCompareCommand,
 } from './commands/closed-issues';
+import { DEFAULT_AGENT } from '../agents/registry';
 
 const program = new Command();
 
@@ -59,11 +60,12 @@ program
 program
   .command('run')
   .description('Run evaluation suite on specified agent')
-  .option('--agent <name>', 'Agent to evaluate (claude-code, cursor, aider)', 'claude-code')
+  .option('--agent <name>', 'Agent to evaluate (claude-code, opencode, cursor, aider)', DEFAULT_AGENT)
   .option('--cases <cases>', 'Specific test cases to run (comma-separated)')
   .option('--output <dir>', 'Output directory for results', 'results')
   .option('--timeout <seconds>', 'Timeout per case in seconds', '300')
   .option('--network', 'Enable network access in sandbox (disabled by default)')
+  .option('--model <model>', 'Model to use (agent-specific, e.g. local-glm/glm-4.7-local-4bit)')
   .action((opts) => runCommand({ ...opts, timeout: parseInt(opts.timeout, 10) }));
 
 program
@@ -136,7 +138,7 @@ program
 program
   .command('interview')
   .description('Run comprehension interview to test agent understanding')
-  .option('--agent <name>', 'Agent to evaluate', 'claude-code')
+  .option('--agent <name>', 'Agent to evaluate', DEFAULT_AGENT)
   .option('--cases <cases>', 'Specific case IDs to run (comma-separated)')
   .option('--output <dir>', 'Output directory for results', 'results')
   .option('--compare', 'Compare new responses against existing baselines')
@@ -184,7 +186,7 @@ variantCmd
   .argument('<name>', 'Variant name (e.g., "control", "with-linear-mcp")')
   .option('-d, --description <text>', 'Description of the variant')
   .option('-c, --changes <changes...>', 'List of explicit changes in this variant')
-  .option('-a, --agent <name>', 'Agent type to capture config for', 'claude-code')
+  .option('-a, --agent <name>', 'Agent type to capture config for', DEFAULT_AGENT)
   .option('-b, --build', 'Build container image after registration')
   .option('-f, --force', 'Overwrite existing variant with same name')
   .action((name, opts) => variantRegisterCommand(name, opts));
@@ -315,6 +317,8 @@ closedIssuesCmd
   .command('run')
   .description('Run agent on closed-issue cases and compare to reference solutions')
   .option('-c, --case <id>', 'Specific case ID to run')
+  .option('--agent <name>', 'Agent to evaluate', DEFAULT_AGENT)
+  .option('--model <model>', 'Model to use (agent-specific)')
   .option('--variant <name>', 'Use a specific variant container (default: active variant)')
   .option('--local', 'Run with local claude command instead of variant container')
   .option('-t, --timeout <seconds>', 'Timeout per case in seconds', '600')

@@ -2,13 +2,14 @@
   "name": "sniffbench",
   "version": "0.1.1",
   "description": "A benchmark suite for coding agents. Think pytest, but for evaluating AI assistants.",
+  "type": "commonjs",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
     "sniff": "dist/cli/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && cp src/agents/opencode-sdk.mjs dist/agents/opencode-sdk.mjs",
     "dev": "tsc --watch",
     "prepublishOnly": "npm run build",
     "test": "jest",
@@ -43,10 +44,12 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.61",
     "@anthropic-ai/claude-code": "^2.0.61",
+    "@opencode-ai/sdk": "^1.1.65",
     "chalk": "^5.3.0",
     "commander": "^12.0.0",
     "dockerode": "^4.0.2",
     "ora": "^8.0.0",
+
     "yaml": "^2.3.4",
     "zod": "^4.1.13"
   },

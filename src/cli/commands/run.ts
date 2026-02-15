@@ -3,7 +3,7 @@ import ora from 'ora';
 import * as fs from 'fs';
 import * as path from 'path';
 import { box } from '../../utils/ui';
-import { loadCases, getDefaultCasesDir } from '../../cases';
+import { loadCases, getDefaultCasesDirs } from '../../cases';
 import { CaseResult } from '../../cases/types';
 import { runCases, ProgressUpdate } from '../../evaluation';
 import { checkDocker } from '../../sandbox';
@@ -14,6 +14,7 @@ interface RunOptions {
   output: string;
   timeout?: number;
   network?: boolean;
+  model?: string;
 }
 
 export async function runCommand(options: RunOptions) {
@@ -35,12 +36,12 @@ export async function runCommand(options: RunOptions) {
 
   // Load cases
   spinner.start('Loading test cases...');
-  const casesDir = getDefaultCasesDir();
+  const casesDirs = getDefaultCasesDirs();
 
   // Parse case filter if provided
   const caseIds = options.cases?.split(',').map((c) => c.trim());
 
-  const cases = await loadCases(casesDir, {
+  const cases = await loadCases(casesDirs, {
     ids: caseIds,
   });
 
@@ -48,7 +49,7 @@ export async function runCommand(options: RunOptions) {
     spinner.warn('No test cases found');
     console.log(
       chalk.yellow('\nTo add test cases, create YAML files in:\n') +
-        chalk.cyan(`  ${casesDir}\n\n`) +
+        chalk.cyan(`  ${casesDirs.join(' or ')}\n\n`) +
         chalk.dim('See cases/bootstrap/example-case-spec.yaml for format.')
     );
     return;
@@ -86,7 +87,7 @@ export async function runCommand(options: RunOptions) {
 
   const onCaseComplete = (result: CaseResult) => {
     if (currentSpinner) {
-      const scorePercent = Math.round(result.score * 100);
+      const scorePercent = Math.round(result.score);
       if (result.passed) {
         currentSpinner.succeed(`${result.caseId}: ${chalk.green('PASSED')} (${scorePercent}%, ${formatDuration(result.durationMs)})`);
       } else if (result.timedOut) {
@@ -103,6 +104,7 @@ export async function runCommand(options: RunOptions) {
   try {
     const result = await runCases(cases, {
       agent: options.agent,
+      model: options.model,
       timeoutSeconds: options.timeout || 300,
       networkEnabled: options.network || false,
       onProgress,
@@ -111,7 +113,7 @@ export async function runCommand(options: RunOptions) {
 
     // Display summary
     console.log('');
-    const averageScorePercent = Math.round(result.summary.averageScore * 100);
+    const averageScorePercent = Math.round(result.summary.averageScore);
     const summaryLines = [
       chalk.bold('Run Summary\n'),
       `Run ID: ${chalk.cyan(result.runId)}`,

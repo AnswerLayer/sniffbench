@@ -30,7 +30,7 @@ export const defaultRubric: Rubric = {
         {
           type: 'command',
           name: 'Tests pass',
-          run: 'npm test 2>/dev/null || pytest 2>/dev/null || go test ./... 2>/dev/null || echo "No test runner found"',
+          run: 'npm test 2>/dev/null || node *.test.js 2>/dev/null || python *.test.py 2>/dev/null || python *_test.py 2>/dev/null || pytest 2>/dev/null || go test ./... 2>/dev/null || exit 1',
           partialCredit: true,
           passThreshold: 1.0,
         },
@@ -88,7 +88,7 @@ export const defaultRubric: Rubric = {
           type: 'command',
           name: 'Reasonable file sizes',
           // Check no single file is > 1000 lines
-          run: 'find . -name "*.{js,ts,py}" -exec wc -l {} + 2>/dev/null | awk \'$1 > 1000 {exit 1}\' || true',
+          run: 'find . \\( -name "*.js" -o -name "*.ts" -o -name "*.py" \\) -exec wc -l {} + 2>/dev/null | awk \'$1 > 1000 {exit 1}\' || true',
           optional: true,
         },
       ],
@@ -114,7 +114,7 @@ export const minimalRubric: Rubric = {
         {
           type: 'command',
           name: 'Tests pass',
-          run: 'npm test 2>/dev/null || pytest 2>/dev/null || go test ./... 2>/dev/null || exit 1',
+          run: 'npm test 2>/dev/null || node *.test.js 2>/dev/null || python *.test.py 2>/dev/null || python *_test.py 2>/dev/null || pytest 2>/dev/null || go test ./... 2>/dev/null || exit 1',
           partialCredit: true,
         },
       ],
@@ -138,7 +138,7 @@ export const strictRubric: Rubric = {
         {
           type: 'command',
           name: 'Tests pass',
-          run: 'npm test || pytest || go test ./...',
+          run: 'npm test 2>/dev/null || node *.test.js 2>/dev/null || python *.test.py 2>/dev/null || python *_test.py 2>/dev/null || pytest 2>/dev/null || go test ./... 2>/dev/null || exit 1',
           partialCredit: true,
           passThreshold: 1.0,
         },

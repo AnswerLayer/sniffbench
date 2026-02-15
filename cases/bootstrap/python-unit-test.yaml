@@ -1,0 +1,64 @@
+id: bootstrap-003
+title: "Python Unit Tests"
+prompt: |
+  This Python file contains a simple text processing function
+  with failing unit tests. Fix the implementation so that all
+  tests pass.
+
+  The function should:
+  - Count the number of words in a given string
+  - Handle edge cases like empty strings, multiple spaces
+  - Handle punctuation properly
+
+  Run the tests with: python text_processor.test.py
+  Ensure all tests pass.
+
+source: bootstrap
+category: codefix
+language: python
+difficulty: easy
+
+tags:
+  - python
+  - unit-tests
+  - text-processing
+
+files:
+  - path: text_processor.py
+    content: |
+      def count_words(text):
+          """Count the number of words in a string."""
+          # TODO: This implementation is buggy. Fix it!
+          words = text.split(' ')
+          return len(words)
+
+  - path: text_processor.test.py
+    content: |
+      import unittest
+      from text_processor import count_words
+
+      class TestCountWords(unittest.TestCase):
+
+          def test_simple_sentence(self):
+              self.assertEqual(count_words("hello world"), 2)
+              self.assertEqual(count_words("one two three four"), 4)
+
+          def test_empty_string(self):
+              self.assertEqual(count_words(""), 0)
+              self.assertEqual(count_words("   "), 0)
+
+          def test_single_word(self):
+              self.assertEqual(count_words("hello"), 1)
+
+          def test_multiple_spaces(self):
+              self.assertEqual(count_words("hello    world"), 2)
+
+          def test_punctuation(self):
+              self.assertEqual(count_words("hello, world!"), 2)
+              self.assertEqual(count_words("test. another? yes."), 3)
+
+          def test_newlines(self):
+              self.assertEqual(count_words("line1\nline2\nline3"), 3)
+
+      if __name__ == '__main__':
+          unittest.main()
