@@ -13,7 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as readline from 'readline';
 import { box } from '../../utils/ui';
-import { loadCases, getDefaultCasesDir } from '../../cases';
+import { loadCases, getDefaultCasesDirs } from '../../cases';
 import { Case } from '../../cases/types';
 import { getAgent, AgentWrapper, AgentResult, AgentEvent } from '../../agents';
 import { computeBehaviorMetrics, formatBehaviorMetrics } from '../../metrics';
@@ -1003,9 +1003,9 @@ export async function interviewCommand(options: InterviewOptions) {
 
   // Load comprehension cases
   spinner.start('Loading comprehension cases...');
-  const casesDir = getDefaultCasesDir();
+  const casesDirs = getDefaultCasesDirs();
 
-  const cases = await loadCases(casesDir, {
+  const cases = await loadCases(casesDirs, {
     category: 'comprehension',
     ids: options.cases?.split(',').map(c => c.trim()),
   });
@@ -1013,7 +1013,7 @@ export async function interviewCommand(options: InterviewOptions) {
   if (cases.length === 0) {
     spinner.warn('No comprehension cases found');
     console.log(chalk.yellow('\nMake sure comprehension cases exist in:'));
-    console.log(chalk.cyan(`  ${casesDir}/comprehension/`));
+    console.log(chalk.cyan(`  ${casesDirs.join(' or ')}`));
     return;
   }
 

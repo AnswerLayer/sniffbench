@@ -3,7 +3,7 @@ import ora from 'ora';
 import * as fs from 'fs';
 import * as path from 'path';
 import { box } from '../../utils/ui';
-import { loadCases, getDefaultCasesDir } from '../../cases';
+import { loadCases, getDefaultCasesDirs } from '../../cases';
 import { CaseResult } from '../../cases/types';
 import { runCases, ProgressUpdate } from '../../evaluation';
 import { checkDocker } from '../../sandbox';
@@ -36,12 +36,12 @@ export async function runCommand(options: RunOptions) {
 
   // Load cases
   spinner.start('Loading test cases...');
-  const casesDir = getDefaultCasesDir();
+  const casesDirs = getDefaultCasesDirs();
 
   // Parse case filter if provided
   const caseIds = options.cases?.split(',').map((c) => c.trim());
 
-  const cases = await loadCases(casesDir, {
+  const cases = await loadCases(casesDirs, {
     ids: caseIds,
   });
 
@@ -49,7 +49,7 @@ export async function runCommand(options: RunOptions) {
     spinner.warn('No test cases found');
     console.log(
       chalk.yellow('\nTo add test cases, create YAML files in:\n') +
-        chalk.cyan(`  ${casesDir}\n\n`) +
+        chalk.cyan(`  ${casesDirs.join(' or ')}\n\n`) +
         chalk.dim('See cases/bootstrap/example-case-spec.yaml for format.')
     );
     return;

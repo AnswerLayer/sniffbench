@@ -147,23 +147,26 @@ export interface LoadOptions {
 }
 
 /**
- * Load all cases from a directory
+ * Load all cases from one or more directories
  */
-export async function loadCases(casesDir: string, options: LoadOptions = {}): Promise<Case[]> {
+export async function loadCases(casesDir: string | string[], options: LoadOptions = {}): Promise<Case[]> {
   const cases: Case[] = [];
+  const dirs = Array.isArray(casesDir) ? casesDir : [casesDir];
+  const seenIds = new Set<string>();
 
-  // Check if directory exists
-  if (!fs.existsSync(casesDir)) {
-    return cases;
+  // Collect YAML files from all directories
+  const yamlFiles: string[] = [];
+  for (const dir of dirs) {
+    if (fs.existsSync(dir)) {
+      yamlFiles.push(...findYamlFiles(dir));
+    }
   }
-
-  // Recursively find all YAML files
-  const yamlFiles = findYamlFiles(casesDir);
 
   for (const filePath of yamlFiles) {
     try {
       const result = await loadCaseFile(filePath, options);
-      if (result.case && matchesFilter(result.case, options)) {
+      if (result.case && matchesFilter(result.case, options) && !seenIds.has(result.case.id)) {
+        seenIds.add(result.case.id);
         cases.push(result.case);
       }
       // Log warnings
@@ -348,22 +351,41 @@ function matchesFilter(caseData: Case, options: LoadOptions): boolean {
 
 /**
  * Get the default cases directory for a project
+ *
+ * @deprecated Use getDefaultCasesDirs() instead — returns all case directories
  */
 export function getDefaultCasesDir(projectRoot: string = process.cwd()): string {
-  // Check for .sniffbench/cases first (project-specific)
+  return getDefaultCasesDirs(projectRoot)[0];
+}
+
+/**
+ * Get all cases directories (project-specific + built-in)
+ *
+ * Project-specific cases (.sniffbench/cases) come first so they take
+ * precedence over built-in cases with the same ID.
+ */
+export function getDefaultCasesDirs(projectRoot: string = process.cwd()): string[] {
+  const dirs: string[] = [];
+
+  // Project-specific cases (first = higher priority for dedup)
   const projectCases = path.join(projectRoot, '.sniffbench', 'cases');
   if (fs.existsSync(projectCases)) {
-    return projectCases;
+    dirs.push(projectCases);
   }
 
-  // Fall back to cases/ in sniffbench installation
-  return path.join(__dirname, '..', '..', 'cases');
+  // Built-in cases shipped with sniffbench
+  const builtInCases = path.join(__dirname, '..', '..', 'cases');
+  if (fs.existsSync(builtInCases)) {
+    dirs.push(builtInCases);
+  }
+
+  return dirs;
 }
 
 /**
  * List available case categories
  */
-export async function listCategories(casesDir: string): Promise<string[]> {
+export async function listCategories(casesDir: string | string[]): Promise<string[]> {
   const cases = await loadCases(casesDir);
   const categories = new Set(cases.map((c) => c.category));
   return Array.from(categories).sort();
@@ -372,7 +394,7 @@ export async function listCategories(casesDir: string): Promise<string[]> {
 /**
  * List available languages
  */
-export async function listLanguages(casesDir: string): Promise<string[]> {
+export async function listLanguages(casesDir: string | string[]): Promise<string[]> {
   const cases = await loadCases(casesDir);
   const languages = new Set(cases.map((c) => c.language));
   return Array.from(languages).sort();
@@ -381,7 +403,7 @@ export async function listLanguages(casesDir: string): Promise<string[]> {
 /**
  * Get a single case by ID
  */
-export async function getCaseById(casesDir: string, id: string): Promise<Case | null> {
+export async function getCaseById(casesDir: string | string[], id: string): Promise<Case | null> {
   const cases = await loadCases(casesDir, { ids: [id] });
   return cases[0] || null;
 }
