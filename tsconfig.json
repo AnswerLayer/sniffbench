@@ -7,7 +7,7 @@
     "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
+
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
@@ -17,5 +17,5 @@
     "moduleResolution": "node"
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts", "dist/**/*"]
+  "exclude": ["node_modules", "dist", "**/*.test.ts"]
 }

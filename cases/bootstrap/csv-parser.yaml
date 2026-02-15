@@ -45,15 +45,17 @@ files:
       import unittest
       import os
       import tempfile
+      import textwrap
       from csv_parser import parse_csv
 
       class TestCSVParser(unittest.TestCase):
 
           def test_simple_csv_with_header(self):
-              data = '''name,age,city
-              Alice,30,New York
-              Bob,25,Los Angeles
-              Charlie,35,Chicago'''
+              data = textwrap.dedent('''\
+                  name,age,city
+                  Alice,30,New York
+                  Bob,25,Los Angeles
+                  Charlie,35,Chicago''')
 
               with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
                   f.write(data)
@@ -69,8 +71,9 @@ files:
               os.unlink(f.name)
 
           def test_csv_without_header(self):
-              data = '''Alice,30,New York
-              Bob,25,Los Angeles'''
+              data = textwrap.dedent('''\
+                  Alice,30,New York
+                  Bob,25,Los Angeles''')
 
               with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
                   f.write(data)
@@ -85,9 +88,10 @@ files:
               os.unlink(f.name)
 
           def test_quoted_fields(self):
-              data = '''product,price,description
-              Widget,10.00,"A widget, really."
-              Gadget,15.00,"A device, good."'''
+              data = textwrap.dedent('''\
+                  product,price,description
+                  Widget,10.00,"A widget, really."
+                  Gadget,15.00,"A device, good."''')
 
               with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
                   f.write(data)
@@ -102,8 +106,9 @@ files:
               os.unlink(f.name)
 
           def test_single_row(self):
-              data = '''name,value
-              test,123'''
+              data = textwrap.dedent('''\
+                  name,value
+                  test,123''')
 
               with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
                   f.write(data)

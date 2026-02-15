@@ -29,7 +29,7 @@ files:
       def count_words(text):
           """Count the number of words in a string."""
           # TODO: This implementation is buggy. Fix it!
-          words = text.split()
+          words = text.split(' ')
           return len(words)
 
   - path: text_processor.test.py
