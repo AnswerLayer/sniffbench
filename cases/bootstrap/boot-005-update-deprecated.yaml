@@ -1,0 +1,30 @@
+# Bootstrap Case: Update deprecated API usage
+# This case tests an agent's ability to identify and fix deprecated patterns.
+
+id: boot-005
+title: "Update deprecated API usage"
+prompt: |
+  Update all deprecated API usage in the codebase.
+
+  The following deprecated pattern is currently used:
+  ${DEPRECATED_PATTERN}
+
+  Replace all occurrences of this deprecated pattern with the new API:
+  ${NEW_API}
+
+  Requirements:
+  - Find all occurrences of the deprecated pattern
+  - Replace each with the new API
+  - Verify the deprecated pattern is gone with grep
+  - Run tests to ensure functionality is preserved
+  - Do not introduce any new errors
+
+  ${GREP_COMMAND}
+
+source: bootstrap
+category: bootstrap
+language: javascript
+difficulty: medium
+
+tags:
+  - bootstrap

@@ -1,0 +1,30 @@
+# Bootstrap Case: Extract duplicated code into shared function
+# This case tests an agent's ability to identify and eliminate code duplication.
+
+id: boot-003
+title: "Extract duplicated code into shared function"
+prompt: |
+  Extract the duplicated code pattern into a shared function.
+
+  The following code pattern appears multiple times in the codebase:
+  ${DUPLICATE_PATTERN}
+
+  Create a new function called "${SHARED_FUNCTION_NAME}" that contains
+  this duplicated logic, then replace all occurrences with a call to
+  this new function.
+
+  Requirements:
+  - Identify all occurrences of the duplicate pattern
+  - Create a shared function with a clear name
+  - Replace all duplicates with calls to the shared function
+  - Verify the pattern is gone with grep
+  - Run tests to ensure functionality is preserved
+
+  ${GREP_COMMAND}
+
+source: bootstrap
+category: bootstrap
+language: javascript
+difficulty: medium
+
+tags:

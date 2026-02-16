@@ -1,0 +1,30 @@
+# Bootstrap Case: Rename a symbol across the codebase
+# This case tests an agent's ability to find and rename a symbol consistently.
+
+id: boot-002
+title: "Rename a symbol across the codebase"
+prompt: |
+  Rename the symbol "${OLD_NAME}" to "${NEW_NAME}" throughout the codebase.
+
+  Find all occurrences of ${OLD_NAME} in the codebase and replace them
+  with ${NEW_NAME}. Ensure the change is consistent across all files.
+
+  Requirements:
+  - Find all references to ${OLD_NAME}
+  - Replace each reference with ${NEW_NAME}
+  - Verify the change with grep: grep -r "${NEW_NAME}" .
+  - Run tests to ensure nothing is broken
+  - Do not introduce any new errors
+
+  ${GREP_COMMAND}
+
+source: bootstrap
+category: bootstrap
+language: javascript
+difficulty: easy
+
+tags:
+  - bootstrap
+  - refactoring
+  - rename
+

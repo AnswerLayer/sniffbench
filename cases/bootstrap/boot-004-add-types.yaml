@@ -1,0 +1,30 @@
+# Bootstrap Case: Add type annotations to a module
+# This case tests an agent's ability to add type safety to code.
+
+id: boot-004
+title: "Add type annotations to a module"
+prompt: |
+  Add type annotations to the module at ${MODULE_PATH}.
+
+  The module currently lacks type annotations. Add appropriate TypeScript
+  types to all functions, variables, and parameters to ensure type safety.
+
+  Requirements:
+  - Add type annotations to all functions
+  - Add type annotations to all variables
+  - Add type annotations to all parameters
+  - Run the TypeScript type checker to verify no errors
+  - Ensure the module still works correctly
+
+  ${TYPECHECK_COMMAND}
+
+source: bootstrap
+category: bootstrap
+language: typescript
+difficulty: medium
+
+tags:
+  - bootstrap
+  - typescript
+  - type-safety
+

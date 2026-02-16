@@ -1,0 +1,30 @@
+# Bootstrap Case: Fix linting errors in a specific file
+# This case tests an agent's ability to fix code style issues in a single file.
+
+id: boot-001
+title: "Fix linting errors in a specific file"
+prompt: |
+  Fix all linting errors in the file: ${FILE_PATH}
+
+  The file currently has linting errors. Run the linter on this file
+  to see what needs to be fixed, then apply the necessary corrections
+  to make the file pass all linting rules.
+
+  Requirements:
+  - Fix all linting errors in ${FILE_PATH}
+  - Do not modify any other files
+  - Preserve the original functionality
+  - Run the linter again to verify all errors are fixed
+
+  ${LINTER_COMMAND}
+
+source: bootstrap
+category: bootstrap
+language: javascript
+difficulty: easy
+
+tags:
+  - bootstrap
+  - linting
+  - code-quality
+
