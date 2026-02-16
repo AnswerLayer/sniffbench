@@ -5,11 +5,8 @@
  * or quality criteria using LLM-based judgment.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
-import { LLMJudgeEvaluator, EvaluatorResult } from '../cases/types';
 import { getEnvVar } from '../utils/env';
+import type { LLMJudgeEvaluator, EvaluatorResult } from '../cases/types';
 
 // =============================================================================
 // Types
@@ -259,7 +256,7 @@ export class LLMJudge {
       winner: result.winner,
       score1: result,
       score2: result,
-      reasoning: result.reasoning
+      reasoning: result.reasoning || ''
     };
   }
 
@@ -304,7 +301,6 @@ export class LLMJudge {
       prompt,
       options: {
         model: this.model,
-        temperature: this.temperature,
         // Enable system prompt for caching
         system: 'You are a code evaluation assistant. Always respond with valid JSON.',
         // Don't load user/project settings
@@ -327,10 +323,11 @@ export class LLMJudge {
     }
 
     // Update cost tracking
-    if (message && message.usage) {
-      this.costTracker.inputTokens += message.usage.input_tokens || 0;
-      this.costTracker.outputTokens += message.usage.output_tokens || 0;
-      this.costTracker.costUsd += message.total_cost_usd || 0;
+    if (response && (response as any).usage) {
+      const usage = (response as any).usage;
+      this.costTracker.inputTokens += usage.input_tokens || 0;
+      this.costTracker.outputTokens += usage.output_tokens || 0;
+      this.costTracker.costUsd += usage.total_cost_usd || 0;
     }
 
     return result;

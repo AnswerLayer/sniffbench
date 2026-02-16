@@ -24,7 +24,7 @@ import { createSandboxManager, checkDocker, RECOMMENDED_IMAGES } from '../sandbo
 import { Sandbox, SandboxConfig } from '../sandbox/types';
 import { getRubricRegistry } from '../rubrics/loader';
 import { getAgent } from '../agents/registry';
-import { runLLMJudgeEvaluator, runLLMJudgeComparisonEvaluator } from './llm-judge';
+import { runLLMJudgeEvaluator } from './llm-judge';
 import type { AgentResult } from '../agents/types';
 
 export interface RunnerOptions {
@@ -253,7 +253,7 @@ async function runSingleCase(
         message: 'Evaluating with rubric...',
       });
 
-      const result = await evaluateWithRubric(caseData, sandbox, options);
+      const result = await evaluateWithRubric(caseData, sandbox, options, agentResult, agentFiles);
       const durationMs = Date.now() - startTime;
 
       options.onProgress?.({
@@ -303,7 +303,9 @@ async function runSingleCase(
 async function evaluateWithRubric(
   caseData: Case,
   sandbox: Sandbox,
-  _options: RunnerOptions
+  _options: RunnerOptions,
+  agentResult: AgentResult,
+  agentFiles: { path: string; content: string; changed: boolean }[]
 ): Promise<Omit<CaseResult, 'durationMs' | 'timestamp'>> {
   const registry = getRubricRegistry();
   const rubric = registry.resolve(caseData.rubric);
@@ -380,15 +382,6 @@ async function evaluateWithRubric(
           passed: false,
           score: 0.0,
           evidence: 'LLM judge comparison not yet fully implemented',
-        };
-      } else if (evaluator.type === 'llm_judge') {
-        // Run LLM judge evaluator
-        const result = await runLLMJudgeEvaluator(evaluator, agentResult.answer, agentFiles);
-        evalResult = {
-          passed: result.passed,
-          score: result.score,
-          evidence: result.evidence,
-          details: result.details,
         };
       } else {
         // Other evaluator types (llm_judge, benchmark, etc.) - not implemented
