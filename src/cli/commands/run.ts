@@ -89,13 +89,13 @@ export async function runCommand(options: RunOptions) {
     if (currentSpinner) {
       const scorePercent = Math.round(result.score);
       if (result.passed) {
-        currentSpinner.succeed(`${result.caseId}: ${chalk.green('PASSED')} (${scorePercent}%, ${formatDuration(result.durationMs)})`);
+        currentSpinner.succeed(`${result.id}: ${chalk.green('PASSED')} (${scorePercent}%, ${formatDuration(result.durationMs)})`);
       } else if (result.timedOut) {
-        currentSpinner.fail(`${result.caseId}: ${chalk.yellow('TIMEOUT')}`);
+        currentSpinner.fail(`${result.id}: ${chalk.yellow('TIMEOUT')}`);
       } else if (result.error) {
-        currentSpinner.fail(`${result.caseId}: ${chalk.red('ERROR')} - ${result.error}`);
+        currentSpinner.fail(`${result.id}: ${chalk.red('ERROR')} - ${result.error}`);
       } else {
-        currentSpinner.fail(`${result.caseId}: ${chalk.red('FAILED')} (${scorePercent}%)`);
+        currentSpinner.fail(`${result.id}: ${chalk.red('FAILED')} (${scorePercent}%)`);
       }
       currentSpinner = null;
     }
@@ -121,7 +121,7 @@ export async function runCommand(options: RunOptions) {
       '',
       `${chalk.green('✓')} Passed: ${result.summary.passed}`,
       `${chalk.red('✗')} Failed: ${result.summary.failed}`,
-      result.summary.timedOut > 0 ? `${chalk.yellow('⏱')} Timed out: ${result.summary.timedOut}` : null,
+      result.summary.timedOut != null ? `${chalk.yellow('⏱')} Timed out: ${result.summary.timedOut}` : null,
       '',
       chalk.bold(`Average Score: ${averageScorePercent}%`),
     ].filter(Boolean);
@@ -137,7 +137,7 @@ export async function runCommand(options: RunOptions) {
     console.log(chalk.dim(`Results saved to: ${outputFile}`));
 
     // Exit with appropriate code
-    if (result.summary.failed > 0 || result.summary.timedOut > 0) {
+    if (result.summary.failed > 0 || (result.summary.timedOut ?? 0) > 0) {
       process.exit(1);
     }
   } catch (err) {

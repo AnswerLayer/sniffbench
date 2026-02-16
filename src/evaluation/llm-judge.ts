@@ -190,7 +190,7 @@ export class LLMJudge {
   ): Promise<ComparisonResult> {
     const cacheKey = this.generateCacheKey('comparison', criteria, answer1, answer2, context);
     if (this.enableCache && this.cache.has(cacheKey)) {
-      return this.cache.get(cacheKey)!;
+      return this.cache.get(cacheKey) as ComparisonResult;
     }
 
     const prompt = PROMPTS.comparison(criteria, answer1, answer2, context);
@@ -205,8 +205,8 @@ export class LLMJudge {
     }
     return {
       winner: result.winner,
-      score1: result,
-      score2: result,
+      score1: result as LLMJudgeScore,
+      score2: result as LLMJudgeScore,
       reasoning: result.reasoning || ''
     };
   }

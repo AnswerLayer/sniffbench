@@ -19,7 +19,6 @@ import {
   RunResult,
   RunSummary,
   EvaluatorType,
-  RubricCriterion,
 } from '../cases/types';
 import { createSandboxManager, checkDocker, RECOMMENDED_IMAGES } from '../sandbox';
 import { Sandbox, SandboxConfig } from '../sandbox/types';
