@@ -369,14 +369,14 @@ async function evaluateWithRubric(
         };
       } else if (evaluator.type === 'llm_judge') {
         // Run LLM judge evaluator
-        const result = await runLLMJudgeEvaluator(evaluator, agentResult.answer, agentFiles);
+        const result = await runLLMJudgeEvaluator(evaluator, agentResult.answer, JSON.stringify(agentFiles));
         evalResult = {
           passed: result.passed,
           score: result.score,
           evidence: result.evidence,
           details: result.details,
         };
-      } else if (evaluator.type === 'llm_judge_comparison') {
+      } else if ((evaluator.type as any) === 'llm_judge_comparison') {
         // Run LLM judge comparison evaluator
         // TODO: Implement baseline answer storage and comparison
         // For now, use a placeholder evaluator
@@ -423,6 +423,7 @@ async function evaluateWithRubric(
       passed: allPassed,
       evidence: `Criterion: ${criterionKey}`,
       evaluatorResults,
+      durationMs: evalDurationMs,
     });
 
     totalWeightedScore += weightedScore;
@@ -451,7 +452,7 @@ async function evaluateWithRubric(
     evidence: `Overall score: ${overallScore.toFixed(2)}%`,
     criteria: criteriaResults,
     evaluators: [],
-    durationMs: Date.now() - startTime,
+    durationMs: Date.now() - (startTime || Date.now()),
     timestamp: new Date(),
   };
 }

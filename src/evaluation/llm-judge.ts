@@ -137,7 +137,7 @@ export class LLMJudge {
   private enableCache: boolean;
   private projectRoot: string;
   private costTracker: CostTracker;
-  private cache: Map<string, LLMJudgeScore>;
+  private cache: Map<string, LLMJudgeScore | ComparisonResult>;
 
   constructor(options: LLMJudgeOptions = {}) {
     const projectRoot = options.projectRoot || process.cwd();
@@ -164,7 +164,7 @@ export class LLMJudge {
     answer: string,
     context?: string
   ): Promise<LLMJudgeScore> {
-    const cacheKey = this.generateCacheKey('quality', criteria, answer, context);
+    const cacheKey = this.generateCacheKey('quality', criteria, answer, context || '');
     if (this.enableCache && this.cache.has(cacheKey)) {
       return this.cache.get(cacheKey)!;
     }
@@ -173,7 +173,7 @@ export class LLMJudge {
     const result = await this.callClaude(prompt);
 
     if (this.enableCache) {
-      this.cache.set(cacheKey, result);
+      this.cache.set(cacheKey, result as ComparisonResult);
     }
 
     return result;
@@ -188,7 +188,7 @@ export class LLMJudge {
     answer2: string,
     context?: string
   ): Promise<ComparisonResult> {
-    const cacheKey = this.generateCacheKey('comparison', criteria, answer1, answer2, context);
+    const cacheKey = this.generateCacheKey('comparison', criteria, answer1, answer2, context || '');
     if (this.enableCache && this.cache.has(cacheKey)) {
       return this.cache.get(cacheKey) as ComparisonResult;
     }
@@ -197,7 +197,7 @@ export class LLMJudge {
     const result = await this.callClaude(prompt);
 
     if (this.enableCache) {
-      this.cache.set(cacheKey, result);
+      this.cache.set(cacheKey, result as ComparisonResult);
     }
 
     if (!result) {
@@ -205,8 +205,8 @@ export class LLMJudge {
     }
     return {
       winner: result.winner,
-      score1: result as LLMJudgeScore,
-      score2: result as LLMJudgeScore,
+      score1: result.score1,
+      score2: result.score2,
       reasoning: result.reasoning || ''
     };
   }
@@ -220,7 +220,7 @@ export class LLMJudge {
     baseline: string,
     context?: string
   ): Promise<LLMJudgeScore> {
-    const cacheKey = this.generateCacheKey('baseline', criteria, answer, baseline, context);
+    const cacheKey = this.generateCacheKey('baseline', criteria, answer, baseline, context || '');
     if (this.enableCache && this.cache.has(cacheKey)) {
       return this.cache.get(cacheKey)!;
     }
@@ -229,7 +229,7 @@ export class LLMJudge {
     const result = await this.callClaude(prompt);
 
     if (this.enableCache) {
-      this.cache.set(cacheKey, result);
+      this.cache.set(cacheKey, result as ComparisonResult);
     }
 
     return result;
@@ -238,7 +238,7 @@ export class LLMJudge {
   /**
    * Call Claude API
    */
-  private async callClaude(prompt: string): Promise<LLMJudgeScore | null> {
+  private async callClaude(prompt: string): Promise<LLMJudgeScore | ComparisonResult | null> {
     if (!this.apiKey) {
       throw new Error('ANTHROPIC_API_KEY not set');
     }
@@ -277,13 +277,56 @@ export class LLMJudge {
   /**
    * Parse LLM response into structured score
    */
-  private parseResponse(content: string): LLMJudgeScore {
+  /**
+   * Parse LLM response into structured score or comparison
+   */
+  /**
+   * Parse LLM response into structured score or comparison
+   */
+  private parseResponse(content: string): LLMJudgeScore | ComparisonResult {
     try {
       // Extract JSON from response (handle markdown code blocks)
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
         throw new Error('No JSON found in response');
       }
+
+      const data = JSON.parse(jsonMatch[0]);
+
+      // Check if this is a comparison result (has score1 and score2)
+      if (data.score1 && data.score2) {
+        return {
+          winner: data.winner,
+          score1: {
+            score: this.normalizeScore(data.score1.score),
+            passed: this.normalizeScore(data.score1.score) >= 0.7,
+            reasoning: data.score1.reasoning || '',
+            criticisms: data.score1.criticisms || [],
+            strengths: data.score1.strengths || [],
+          },
+          score2: {
+            score: this.normalizeScore(data.score2.score),
+            passed: this.normalizeScore(data.score2.score) >= 0.7,
+            reasoning: data.score2.reasoning || '',
+            criticisms: data.score2.criticisms || [],
+            strengths: data.score2.strengths || [],
+          },
+          reasoning: data.reasoning || '',
+        };
+      }
+
+      // Otherwise, this is a single score
+      return {
+        score: this.normalizeScore(data.score),
+        passed: this.normalizeScore(data.score) >= 0.7,
+        reasoning: data.reasoning || '',
+        criticisms: data.criticisms || [],
+        strengths: data.strengths || [],
+      };
+    } catch (err) {
+      throw new Error('Failed to parse LLM response: ' + (err as Error).message);
+    }
+  }
 
       const data = JSON.parse(jsonMatch[0]);
 
@@ -320,7 +363,7 @@ export class LLMJudge {
     type: string,
     ...args: string[]
   ): string {
-    const str = args.join('|||');
+    const str = args.filter((arg): arg is string => arg !== undefined).join('|||');
     return type + ':' + this.model + ':' + str.substring(0, 200);
   }
 
