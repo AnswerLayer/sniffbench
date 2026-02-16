@@ -19,6 +19,7 @@ import {
   RunResult,
   RunSummary,
   EvaluatorType,
+  RubricCriterion,
 } from '../cases/types';
 import { createSandboxManager, checkDocker, RECOMMENDED_IMAGES } from '../sandbox';
 import { Sandbox, SandboxConfig } from '../sandbox/types';
@@ -96,7 +97,7 @@ export async function runCases(cases: Case[], options: RunnerOptions): Promise<R
   }
 
   const manager = createSandboxManager();
-  let runRubricId = 'default';
+  let rubricId = 'default';
 
   try {
     for (let i = 0; i < cases.length; i++) {
@@ -118,16 +119,18 @@ export async function runCases(cases: Case[], options: RunnerOptions): Promise<R
         if (i === 0) {
           const registry = getRubricRegistry();
           const rubric = registry.resolve(caseData.rubric);
-          runRubricId = rubric.id;
+          rubricId = rubric.id;
         }
       } catch (err) {
         const errorResult: CaseResult = {
-          caseId: caseData.id,
+          id: caseData.id,
+          title: caseData.title,
           score: 0,
           passed: false,
-          criteriaResults: [],
+          evidence: (err as Error).message,
+          criteria: [],
+          evaluators: [],
           durationMs: 0,
-          timedOut: false,
           error: (err as Error).message,
           timestamp: new Date(),
         };
@@ -158,13 +161,13 @@ export async function runCases(cases: Case[], options: RunnerOptions): Promise<R
   };
 
   return {
-    runId,
-    startedAt,
-    completedAt,
-    agent: options.agent,
-    rubricId: runRubricId,
-    caseResults: results,
+    id: runId,
+    timestamp: startedAt,
+    cases: results,
     summary,
+    durationMs: totalDurationMs,
+    agent: options.agent,
+    rubricId,
   };
 }
 
@@ -269,8 +272,8 @@ async function runSingleCase(
         agentResponse: agentResult.answer,
         agentToolCalls: agentResult.toolCalls.map((t) => ({
           name: t.name,
-          durationMs: t.durationMs,
-          success: t.success,
+          durationMs: t.durationMs || 0,
+          success: t.success || false,
         })),
         agentModel: agentResult.model,
         agentTokens: agentResult.tokens
@@ -306,7 +309,7 @@ async function evaluateWithRubric(
   _options: RunnerOptions,
   agentResult: AgentResult,
   agentFiles: { path: string; content: string; changed: boolean }[]
-): Promise<Omit<CaseResult, 'durationMs' | 'timestamp'>> {
+): Promise<CaseResult> {
   const registry = getRubricRegistry();
   const rubric = registry.resolve(caseData.rubric);
 
@@ -418,8 +421,8 @@ async function evaluateWithRubric(
       name: criterionKey,
       weight: criterion.weight,
       score: rawScore,
-      weightedScore,
       passed: allPassed,
+      evidence: `Criterion: ${criterionKey}`,
       evaluatorResults,
     });
 
@@ -442,11 +445,15 @@ async function evaluateWithRubric(
   const passed = overallScore >= passThreshold;
 
   return {
-    caseId: caseData.id,
+    id: caseData.id,
+    title: caseData.title,
     score: overallScore,
     passed,
-    criteriaResults,
-    timedOut: false,
+    evidence: `Overall score: ${overallScore.toFixed(2)}%`,
+    criteria: criteriaResults,
+    evaluators: [],
+    durationMs: Date.now() - startTime,
+    timestamp: new Date(),
   };
 }
 

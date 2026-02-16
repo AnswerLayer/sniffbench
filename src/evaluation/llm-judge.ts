@@ -398,7 +398,7 @@ export async function runLLMJudgeEvaluator(
         if (!evaluator.prompt) {
           throw new Error('Custom evaluation requires a prompt');
         }
-        score = await judge.evaluate(evaluator.prompt, answer, context);
+        score = await judge.evaluate(evaluator.prompt, answer, context || undefined);
         break;
 
       default:
@@ -463,7 +463,7 @@ export async function runLLMJudgeComparisonEvaluator(
       'Compare the quality and correctness of these two answers.',
       answer1,
       answer2,
-      context
+      context || undefined
     );
 
     const durationMs = Date.now() - startTime;
@@ -472,7 +472,7 @@ export async function runLLMJudgeComparisonEvaluator(
       name: evaluator.name || 'llm_judge_comparison',
       type: 'llm_judge',
       score: comparison.winner === 'tie' ? 0.5 : comparison.winner === 'answer1' ? 1.0 : 0.0,
-      passed: comparison.winner !== 'answer2', // Answer1 passes if it's better or tie
+      passed: comparison.winner !== 'answer2',
       evidence: comparison.reasoning,
       details: {
         winner: comparison.winner,

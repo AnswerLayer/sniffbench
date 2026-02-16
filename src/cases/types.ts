@@ -133,3 +133,623 @@ export type EvaluatorType =
   | 'llm_judge'    // Use LLM to evaluate (subjective criteria)
   | 'llm_judge_comparison' // Use LLM to compare two answers
   | 'agent_behavior'; // Evaluate agent behavior metrics
+/**
+ * A rubric criterion
+ */
+export interface RubricCriterion {
+  /** Weight (0-100) */
+  weight: number;
+
+  /** Description of the criterion */
+  description: string;
+
+  /** Evaluators for this criterion */
+  evaluators: Evaluator[];
+
+  /** Whether this criterion is optional */
+  optional?: boolean;
+
+  /** Whether partial credit is allowed */
+  partialCredit?: boolean;
+
+  /** Pass threshold (0-1) */
+  passThreshold?: number;
+}
+
+/**
+ * Reference to a rubric (string ID or inline override)
+ */
+export interface RubricReference {
+  /** Base rubric ID to extend */
+  extends: string;
+
+  /** Criteria to override or add */
+  criteria?: Record<string, RubricCriterion | Partial<RubricCriterion>>;
+}
+
+/**
+ * Base evaluator interface
+ */
+export interface EvaluatorBase {
+  /** Type of evaluator */
+  type: EvaluatorType;
+
+  /** Human-readable name */
+  name: string;
+}
+
+/**
+ * Command evaluator - runs a shell command
+ */
+export interface CommandEvaluator extends EvaluatorBase {
+  type: 'command';
+  name: string;
+  /** Command to run */
+  run: string;
+  /** Whether this evaluator is optional */
+  optional?: boolean;
+  /** Whether partial credit is allowed */
+  partialCredit?: boolean;
+  /** Pass threshold (0-1) */
+  passThreshold?: number;
+}
+
+/**
+ * Pattern evaluator - regex match on files
+ */
+export interface PatternEvaluator extends EvaluatorBase {
+  type: 'pattern';
+  name: string;
+  /** Files to search */
+  files: string;
+  /** Regex pattern to match */
+  failIfMatch: string;
+  /** Whether to ignore case */
+  ignoreCase?: boolean;
+  /** Whether this evaluator is optional */
+  optional?: boolean;
+  /** Whether partial credit is allowed */
+  partialCredit?: boolean;
+}
+
+/**
+ * Benchmark evaluator - runs command and extracts numeric metric
+ */
+export interface BenchmarkEvaluator extends EvaluatorBase {
+  type: 'benchmark';
+  name: string;
+  /** Command to run */
+  run: string;
+  /** Regex to extract metric */
+  extract: string;
+  /** Whether this evaluator is optional */
+  optional?: boolean;
+  /** Whether partial credit is allowed */
+  partialCredit?: boolean;
+}
+
+/**
+ * Diff evaluator - compares output to expected
+ */
+export interface DiffEvaluator extends EvaluatorBase {
+  type: 'diff';
+  name: string;
+  /** Expected output */
+  expected: string;
+  /** Whether this evaluator is optional */
+  optional?: boolean;
+  /** Whether partial credit is allowed */
+  partialCredit?: boolean;
+}
+
+/**
+ * LLM judge evaluator - uses LLM to evaluate answers
+ */
+export interface LLMJudgeEvaluator extends EvaluatorBase {
+  type: 'llm_judge';
+  name: string;
+  /** Evaluation type */
+  evaluate: 'code_quality' | 'readability' | 'documentation' | 'custom';
+  /** Custom prompt for custom evaluation */
+  prompt?: string;
+  /** Model to use for evaluation */
+  model?: string;
+}
+
+/**
+ * Agent behavior evaluator - evaluates agent behavior metrics
+ */
+export interface AgentBehaviorEvaluator extends EvaluatorBase {
+  type: 'agent_behavior';
+  name: string;
+  /** Metrics to evaluate */
+  metrics: string[];
+}
+
+/**
+ * Evaluator interface (union of all evaluator types)
+ */
+export type Evaluator = CommandEvaluator | PatternEvaluator | BenchmarkEvaluator | DiffEvaluator | LLMJudgeEvaluator | AgentBehaviorEvaluator;
+
+/**
+ * A rubric definition
+ */
+export interface Rubric {
+  /** Unique identifier */
+  id: string;
+
+  /** Human-readable name */
+  name: string;
+
+  /** Description */
+  description: string;
+
+  /** Criteria for evaluation */
+  criteria: Record<string, RubricCriterion>;
+}
+
+/**
+ * Result of an evaluator run
+ */
+export interface EvaluatorResult {
+  /** Name of the evaluator */
+  name: string;
+
+  /** Type of evaluator */
+  type: EvaluatorType;
+
+  /** Score (0-1) */
+  score: number;
+
+  /** Whether the evaluator passed */
+  passed: boolean;
+
+  /** Evidence/reasoning for the score */
+  evidence: string;
+
+  /** Additional details */
+  details?: Record<string, unknown>;
+
+  /** Duration in milliseconds */
+  durationMs: number;
+}
+
+/**
+ * Result of a criterion evaluation
+ */
+export interface CriterionResult {
+  /** Name of the criterion */
+  name: string;
+
+  /** Weight of the criterion */
+  weight: number;
+
+  /** Score (0-1) */
+  score: number;
+
+  /** Whether the criterion passed */
+  passed: boolean;
+
+  /** Evidence/reasoning */
+  evidence: string;
+
+  /** Duration in milliseconds */
+  durationMs: number;
+}
+
+/**
+ * Result of a case run
+ */
+export interface CaseResult {
+  /** Case ID */
+  id: string;
+
+  /** Case title */
+  title: string;
+
+  /** Overall score (0-1) */
+  score: number;
+
+  /** Whether the case passed */
+  passed: boolean;
+
+  /** Evidence/reasoning */
+  evidence: string;
+
+  /** Individual criterion results */
+  criteria: CriterionResult[];
+
+  /** Individual evaluator results */
+  evaluators: EvaluatorResult[];
+
+  /** Duration in milliseconds */
+  durationMs: number;
+
+  /** Error if any */
+  error?: string;
+}
+
+/**
+ * Result of a run (multiple cases)
+ */
+export interface RunResult {
+  /** Run ID */
+  id: string;
+
+  /** Timestamp */
+  timestamp: Date;
+
+  /** Cases that were run */
+  cases: CaseResult[];
+
+  /** Overall summary */
+  summary: RunSummary;
+
+  /** Duration in milliseconds */
+  durationMs: number;
+
+  /** Error if any */
+  error?: string;
+}
+
+/**
+ * Summary of a run
+ */
+export interface RunSummary {
+  /** Number of cases run */
+  total: number;
+
+  /** Number of cases passed */
+  passed: number;
+
+  /** Number of cases failed */
+  failed: number;
+
+  /** Average score */
+  averageScore: number;
+
+  /** Total duration in milliseconds */
+  totalDurationMs: number;
+}
+
+// Fix missing properties in CaseResult
+export interface CaseResult {
+  /** Case ID */
+  id: string;
+
+  /** Case title */
+  title: string;
+
+  /** Overall score (0-1) */
+  score: number;
+
+  /** Whether the case passed */
+  passed: boolean;
+
+  /** Evidence/reasoning */
+  evidence: string;
+
+  /** Individual criterion results */
+  criteria: CriterionResult[];
+
+  /** Individual evaluator results */
+  evaluators: EvaluatorResult[];
+
+  /** Duration in milliseconds */
+  durationMs: number;
+
+  /** Error if any */
+  error?: string;
+
+  /** Agent response */
+  agentResponse?: string;
+
+  /** Agent tool calls */
+  agentToolCalls?: Array<{
+    name: string;
+    durationMs: number;
+    success: boolean;
+  }>;
+
+  /** Agent model */
+  agentModel?: string;
+
+  /** Agent tokens */
+  agentTokens?: {
+    input: number;
+    output: number;
+    total: number;
+  };
+
+  /** Agent files */
+  agentFiles?: Array<{
+    path: string;
+    content: string;
+    changed: boolean;
+  }>;
+
+  /** Whether the case timed out */
+  timedOut?: boolean;
+
+  /** Timestamp */
+  timestamp?: Date;
+}
+
+// Fix missing properties in RunResult
+export interface RunResult {
+  /** Run ID */
+  id: string;
+
+  /** Timestamp */
+  timestamp: Date;
+
+  /** Cases that were run */
+  cases: CaseResult[];
+
+  /** Overall summary */
+  summary: RunSummary;
+
+  /** Duration in milliseconds */
+  durationMs: number;
+
+  /** Error if any */
+  error?: string;
+
+  /** Run ID (alias for id) */
+  runId?: string;
+
+  /** Agent name */
+  agent?: string;
+
+  /** Rubric ID */
+  rubricId?: string;
+
+  /** Case results (alias for cases) */
+  caseResults?: CaseResult[];
+}
+
+// Fix missing properties in RunSummary
+export interface RunSummary {
+  /** Number of cases run */
+  total: number;
+
+  /** Number of cases passed */
+  passed: number;
+
+  /** Number of cases failed */
+  failed: number;
+
+  /** Number of cases skipped */
+  skipped?: number;
+
+  /** Number of cases timed out */
+  timedOut?: number;
+
+  /** Average score */
+  averageScore: number;
+
+  /** Total duration in milliseconds */
+  totalDurationMs: number;
+}
+
+// Fix missing properties in CriterionResult
+export interface CriterionResult {
+  /** Name of the criterion */
+  name: string;
+
+  /** Weight of the criterion */
+  weight: number;
+
+  /** Score (0-1) */
+  score: number;
+
+  /** Whether the criterion passed */
+  passed: boolean;
+
+  /** Evidence/reasoning */
+  evidence: string;
+
+  /** Weighted score */
+  weightedScore?: number;
+
+  /** Duration in milliseconds */
+  durationMs: number;
+
+  /** Individual evaluator results */
+  evaluatorResults?: EvaluatorResult[];
+}
+
+// Fix missing optional property in Evaluator
+export interface EvaluatorBase {
+  /** Type of evaluator */
+  type: EvaluatorType;
+
+  /** Human-readable name */
+  name: string;
+
+  /** Whether this evaluator is optional */
+  optional?: boolean;
+}
+
+// Fix missing optional property in LLMJudgeEvaluator
+export interface LLMJudgeEvaluator extends EvaluatorBase {
+  type: 'llm_judge';
+  name: string;
+  /** Evaluation type */
+  evaluate: 'code_quality' | 'readability' | 'documentation' | 'custom';
+  /** Custom prompt for custom evaluation */
+  prompt?: string;
+  /** Model to use for evaluation */
+  model?: string;
+}
+
+// Fix missing properties in CaseResult for CLI usage
+export interface CaseResult {
+  /** Case ID */
+  id: string;
+
+  /** Case title */
+  title: string;
+
+  /** Overall score (0-1) */
+  score: number;
+
+  /** Whether the case passed */
+  passed: boolean;
+
+  /** Evidence/reasoning */
+  evidence: string;
+
+  /** Individual criterion results */
+  criteria: CriterionResult[];
+
+  /** Individual evaluator results */
+  evaluators: EvaluatorResult[];
+
+  /** Duration in milliseconds */
+  durationMs: number;
+
+  /** Error if any */
+  error?: string;
+
+  /** Agent response */
+  agentResponse?: string;
+
+  /** Agent tool calls */
+  agentToolCalls?: Array<{
+    name: string;
+    durationMs: number;
+    success: boolean;
+  }>;
+
+  /** Agent model */
+  agentModel?: string;
+
+  /** Agent tokens */
+  agentTokens?: {
+    input: number;
+    output: number;
+    total: number;
+  };
+
+  /** Agent files */
+  agentFiles?: Array<{
+    path: string;
+    content: string;
+    changed: boolean;
+  }>;
+
+  /** Whether the case timed out */
+  timedOut?: boolean;
+
+  /** Timestamp */
+  timestamp?: Date;
+}
+
+// Fix missing properties in RunResult for CLI usage
+export interface RunResult {
+  /** Run ID */
+  id: string;
+
+  /** Timestamp */
+  timestamp: Date;
+
+  /** Cases that were run */
+  cases: CaseResult[];
+
+  /** Overall summary */
+  summary: RunSummary;
+
+  /** Duration in milliseconds */
+  durationMs: number;
+
+  /** Error if any */
+  error?: string;
+
+  /** Run ID (alias for id) */
+  runId?: string;
+
+  /** Agent name */
+  agent?: string;
+
+  /** Rubric ID */
+  rubricId?: string;
+
+  /** Case results (alias for cases) */
+  caseResults?: CaseResult[];
+}
+
+// Fix missing properties in RunSummary for CLI usage
+export interface RunSummary {
+  /** Number of cases run */
+  total: number;
+
+  /** Number of cases passed */
+  passed: number;
+
+  /** Number of cases failed */
+  failed: number;
+
+  /** Number of cases skipped */
+  skipped?: number;
+
+  /** Number of cases timed out */
+  timedOut?: number;
+
+  /** Average score */
+  averageScore: number;
+
+  /** Total duration in milliseconds */
+  totalDurationMs: number;
+}
+
+// Fix missing properties in CriterionResult for CLI usage
+export interface CriterionResult {
+  /** Name of the criterion */
+  name: string;
+
+  /** Weight of the criterion */
+  weight: number;
+
+  /** Score (0-1) */
+  score: number;
+
+  /** Whether the criterion passed */
+  passed: boolean;
+
+  /** Evidence/reasoning */
+  evidence: string;
+
+  /** Weighted score */
+  weightedScore?: number;
+
+  /** Duration in milliseconds */
+  durationMs: number;
+
+  /** Individual evaluator results */
+  evaluatorResults?: EvaluatorResult[];
+}
+
+// Fix missing optional property in Evaluator
+export interface EvaluatorBase {
+  /** Type of evaluator */
+  type: EvaluatorType;
+
+  /** Human-readable name */
+  name: string;
+
+  /** Whether this evaluator is optional */
+  optional?: boolean;
+}
+
+// Fix missing optional property in LLMJudgeEvaluator
+export interface LLMJudgeEvaluator extends EvaluatorBase {
+  type: 'llm_judge';
+  name: string;
+  /** Evaluation type */
+  evaluate: 'code_quality' | 'readability' | 'documentation' | 'custom';
+  /** Custom prompt for custom evaluation */
+  prompt?: string;
+  /** Model to use for evaluation */
+  model?: string;
+}
