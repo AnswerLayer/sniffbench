@@ -46,7 +46,7 @@ async function spawnServer(
     },
   });
 
-  const url = await new Promise<string>((resolve, reject) => {
+  const _url = await new Promise<string>((resolve, reject) => {
     const id = setTimeout(() => {
       proc.kill();
       reject(new Error(`Timeout waiting for opencode server after ${timeoutMs}ms`));
@@ -157,6 +157,7 @@ export class OpencodeAgent implements AgentWrapper {
       const config = options.model
         ? { ...this.config, model: options.model }
         : this.config;
+      const { url, proc } = await spawnServer(cwd, config, 15000);
       _serverProc = proc;
 
       const createClient = await loadSDK();
@@ -337,8 +338,8 @@ export class OpencodeAgent implements AgentWrapper {
             totalCost = info.cost;
           }
           // Extract final answer text from message parts if we haven't captured it via deltas
-if (props && (props as { parts?: unknown[] } & Record<string, unknown> & { parts?: unknown[] }).parts) {
           if (props && (props as { parts?: unknown[] } & Record<string, unknown>).parts) {
+            for (const p of (props as { parts?: unknown[] }).parts) {
               if ((p as { type?: string; text?: string }).type === 'text' && (p as { type?: string; text?: string }).text) {
                 answer += (p as { type?: string; text?: string }).text;
               }
