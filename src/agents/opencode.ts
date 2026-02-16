@@ -149,7 +149,7 @@ export class OpencodeAgent implements AgentWrapper {
     const toolCalls: ToolCall[] = [];
     let model = 'unknown';
     let sessionId = '';
-    let serverProc: ChildProcess | null = null;
+    let _serverProc: ChildProcess | null = null;
 
     try {
       // Spawn server in the case's working directory
@@ -158,7 +158,7 @@ export class OpencodeAgent implements AgentWrapper {
         ? { ...this.config, model: options.model }
         : this.config;
       const { url, proc } = await spawnServer(cwd, config, 15000);
-      serverProc = proc;
+      _serverProc = proc;
 
       const createClient = await loadSDK();
       if (!createClient) throw new Error("Failed to load SDK");
@@ -339,7 +339,7 @@ export class OpencodeAgent implements AgentWrapper {
           }
           // Extract final answer text from message parts if we haven't captured it via deltas
           if (props && (props as { parts?: unknown[] }).parts) {
-            for (const p of msg.parts || []) {              if ((p as { type?: string; text?: string }).type === 'text' && (p as { type?: string; text?: string }).text) {
+            for (const p of props.parts || []) {              if ((p as { type?: string; text?: string }).type === 'text' && (p as { type?: string; text?: string }).text) {
                 answer += (p as { type?: string; text?: string }).text;
               }
             }
@@ -426,7 +426,7 @@ export class OpencodeAgent implements AgentWrapper {
       options.onEvent?.({ type: 'complete', result: errorResult });
       return errorResult;
     } finally {
-      serverProc?.kill();
+      _serverProc?.kill();
     }
   }
 }
