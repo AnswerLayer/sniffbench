@@ -24,7 +24,7 @@ import { createSandboxManager, checkDocker, RECOMMENDED_IMAGES } from '../sandbo
 import { Sandbox, SandboxConfig } from '../sandbox/types';
 import { getRubricRegistry } from '../rubrics/loader';
 import { getAgent } from '../agents/registry';
-import { runLLMJudgeEvaluator } from './llm-judge';
+import { runLLMJudgeEvaluator, runLLMJudgeComparisonEvaluator } from './llm-judge';
 import type { AgentResult } from '../agents/types';
 
 export interface RunnerOptions {

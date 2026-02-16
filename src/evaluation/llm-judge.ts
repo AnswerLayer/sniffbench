@@ -166,7 +166,10 @@ export class LLMJudge {
   ): Promise<LLMJudgeScore | null> {
     const cacheKey = this.generateCacheKey('quality', criteria, answer, context || '');
     if (this.enableCache && this.cache.has(cacheKey)) {
-      return this.cache.get(cacheKey) as LLMJudgeScore | null;
+      const cached = this.cache.get(cacheKey);
+      if (cached && 'score' in cached) {
+        return cached as LLMJudgeScore;
+      }
     }
 
     const prompt = PROMPTS.quality(criteria, answer, context);
@@ -176,10 +179,10 @@ export class LLMJudge {
       this.cache.set(cacheKey, result);
     }
 
-    if (!result || 'score' in result) {
-      return result as LLMJudgeScore;
+    if (!result) {
+      return null;
     }
-    throw new Error('Unexpected result type from evaluate');
+    return result as LLMJudgeScore;
   }
 
   /**
@@ -193,7 +196,10 @@ export class LLMJudge {
   ): Promise<ComparisonResult> {
     const cacheKey = this.generateCacheKey('comparison', criteria, answer1, answer2, context || '');
     if (this.enableCache && this.cache.has(cacheKey)) {
-      return this.cache.get(cacheKey) as ComparisonResult;
+      const cached = this.cache.get(cacheKey);
+      if (cached && 'score1' in cached) {
+        return cached as ComparisonResult;
+      }
     }
 
     const prompt = PROMPTS.comparison(criteria, answer1, answer2, context);
@@ -220,7 +226,10 @@ export class LLMJudge {
   ): Promise<LLMJudgeScore | null> {
     const cacheKey = this.generateCacheKey('baseline', criteria, answer, baseline, context || '');
     if (this.enableCache && this.cache.has(cacheKey)) {
-      return this.cache.get(cacheKey) as LLMJudgeScore | null;
+      const cached = this.cache.get(cacheKey);
+      if (cached && 'score' in cached) {
+        return cached as LLMJudgeScore;
+      }
     }
 
     const prompt = PROMPTS.baseline(criteria, answer, baseline, context);
@@ -230,16 +239,16 @@ export class LLMJudge {
       this.cache.set(cacheKey, result);
     }
 
-    if (!result || 'score' in result) {
-      return result as LLMJudgeScore;
+    if (!result) {
+      return null;
     }
-    throw new Error('Unexpected result type from evaluateAgainstBaseline');
+    return result as LLMJudgeScore;
   }
 
   /**
    * Call Claude API
    */
-  private async callClaude(prompt: string): Promise<LLMJudgeScore | ComparisonResult> {
+  private async callClaude(prompt: string): Promise<LLMJudgeScore | ComparisonResult | null> {
     if (!this.apiKey) {
       throw new Error('ANTHROPIC_API_KEY not set');
     }
@@ -278,7 +287,7 @@ export class LLMJudge {
   /**
    * Parse LLM response into structured score or comparison
    */
-  private parseResponse(content: string): LLMJudgeScore | ComparisonResult {
+  private parseResponse(content: string): LLMJudgeScore | ComparisonResult | null {
     try {
       // Extract JSON from response (handle markdown code blocks)
       const jsonMatch = content.match(/\{[\s\S]*\}/);
