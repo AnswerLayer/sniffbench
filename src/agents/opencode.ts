@@ -214,6 +214,7 @@ export class OpencodeAgent implements AgentWrapper {
         }
 
         const eventType = (event as { type?: string; event?: string })?.type ?? (event as { type?: string; event?: string })?.event ?? '';
+        const eventAny = event as any;
 
         if (eventType === 'message.part.updated') {
           const props = (event as { properties?: unknown; data?: unknown }).properties || (event as { properties?: unknown; data?: unknown }).data || {};
@@ -373,8 +374,8 @@ export class OpencodeAgent implements AgentWrapper {
           const messages = messagesResult.data as unknown[];
           // Find the last assistant message
           for (let i = messages.length - 1; i >= 0; i--) {
-            const msg = messages[i];
-            if (msg.role === 'assistant' && msg.parts) {
+            const msg = messages[i] as any;
+            if ((msg as any).role === 'assistant' && (msg as any).parts) {
               for (const p of msg.parts) {
                 if (p.type === 'text' && p.text) {
                   answer += p.text;
