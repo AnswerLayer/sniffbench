@@ -196,7 +196,7 @@ export class DifficultyLadderBuilder {
  * Default scaffolding for easy level
  * - More context, hints, and guidance
  */
-export function defaultEasyScaffolding(baseCase: Case): ScaffoldingLevel {
+export function defaultEasyScaffolding(_baseCase: Case): ScaffoldingLevel {
   return {
     level: 'easy',
     hints: [
@@ -212,7 +212,7 @@ export function defaultEasyScaffolding(baseCase: Case): ScaffoldingLevel {
  * Default scaffolding for medium level
  * - Standard context, minimal hints
  */
-export function defaultMediumScaffolding(baseCase: Case): ScaffoldingLevel {
+export function defaultMediumScaffolding(_baseCase: Case): ScaffoldingLevel {
   return {
     level: 'medium',
     hints: [

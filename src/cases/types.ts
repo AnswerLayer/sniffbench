@@ -1,3 +1,4 @@
+import type { ScaffoldingLevel } from './difficulty-ladder';
 /**
  * Case and Rubric Schema Types
  *
