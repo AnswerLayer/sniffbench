@@ -37,7 +37,7 @@ sniff doctor
 sniff interview
 ```
 
-This runs your agent through comprehension questions about your codebase. You grade each answer (1-10) to establish baselines.
+This runs your agent through comprehension questions about your codebase. You grade each answer (pass/fail) to establish baselines.
 
 **Every interview automatically:**
 - Creates a run with a unique ID

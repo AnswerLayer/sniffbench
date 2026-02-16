@@ -68,7 +68,7 @@ This will:
 1. Load comprehension cases (12 questions about codebase architecture)
 2. Run each question through Claude Code
 3. Display the agent's answer
-4. Prompt you to grade (1-10)
+4. Prompt you to grade (pass/fail)
 5. Save results to a new run
 
 ### Interview with Label
