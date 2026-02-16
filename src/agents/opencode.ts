@@ -319,7 +319,7 @@ export class OpencodeAgent implements AgentWrapper {
         } else if (eventType === 'message.updated') {
           // A full message update — extract final info from here
           const eventAny = event as { properties?: unknown; data?: unknown };
-          const props = eventAny.properties || eventAny.data;
+          const props = (eventAny.properties || eventAny.data) as { parts?: unknown[] } & Record<string, unknown>;
           const info = props as { providerID?: string; modelID?: string; tokens?: { input?: number; output?: number; cache?: { read?: number; write?: number }; total?: number }; cost?: number } | undefined;
           if (info?.providerID && info?.modelID) {
             model = `${info.providerID}/${info.modelID}`;
@@ -338,8 +338,8 @@ export class OpencodeAgent implements AgentWrapper {
             totalCost = info.cost;
           }
           // Extract final answer text from message parts if we haven't captured it via deltas
-          if (props && (props as { parts?: unknown[] }).parts) {
-            for (const p of props.parts || []) {
+if (props && (props as { parts?: unknown[] } & Record<string, unknown> & { parts?: unknown[] }).parts) {
+          if (props && (props as { parts?: unknown[] } & Record<string, unknown>).parts) {
               if ((p as { type?: string; text?: string }).type === 'text' && (p as { type?: string; text?: string }).text) {
                 answer += (p as { type?: string; text?: string }).text;
               }
@@ -347,7 +347,7 @@ export class OpencodeAgent implements AgentWrapper {
           }
         } else if (eventType === 'session.status') {
           const eventAny = event as { properties?: unknown; data?: unknown };
-          const props = eventAny.properties || eventAny.data;
+          const props = (eventAny.properties || eventAny.data) as { parts?: unknown[] } & Record<string, unknown>;
           const status = props as { type?: string; attempt?: number; message?: string } | undefined;
           if (status?.type === 'idle') {
             // Agent finished processing
@@ -363,7 +363,7 @@ export class OpencodeAgent implements AgentWrapper {
           }
         } else if (eventType === 'session.error') {
           const eventAny = event as { properties?: unknown; data?: unknown };
-          const props = eventAny.properties || eventAny.data;
+          const props = (eventAny.properties || eventAny.data) as { parts?: unknown[] } & Record<string, unknown>;
           const errMsg = (props as { error?: { message?: string } | undefined })?.error?.message || JSON.stringify(props) || 'Unknown error';
           options.onEvent?.({ type: 'error', message: errMsg, code: 'SESSION_ERROR' });
         }

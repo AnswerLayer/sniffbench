@@ -315,6 +315,7 @@ async function evaluateWithRubric(
   const criteriaResults: CriterionResult[] = [];
   let totalWeightedScore = 0;
   let _totalWeight = 0;
+  const evalStartTime = Date.now();
 
   // Evaluate each criterion in the rubric
   for (const [criterionKey, criterion] of Object.entries(rubric.criteria)) {
@@ -431,7 +432,7 @@ async function evaluateWithRubric(
   const passThreshold = 70;
   const passed = overallScore >= passThreshold;
 
-  return {
+  const result: CaseResult = {
     id: caseData.id,
     title: caseData.title,
     score: overallScore,
@@ -442,6 +443,7 @@ async function evaluateWithRubric(
     durationMs: Date.now() - evalStartTime,
     timestamp: new Date(),
   };
+  return result;
 }
 
 /**
