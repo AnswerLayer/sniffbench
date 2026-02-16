@@ -131,6 +131,13 @@ export type EvaluatorType =
   | 'benchmark'    // Run command, extract numeric metric
   | 'diff'         // Compare output to expected
   | 'llm_judge'    // Use LLM to evaluate (subjective criteria)
+  | 'llm_judge_comparison' // Use LLM to compare two answers
+  | 'agent_behavior'; // Evaluate agent behavior metrics
+  | 'command'      // Run a shell command, check exit code
+  | 'pattern'      // Regex match on files
+  | 'benchmark'    // Run command, extract numeric metric
+  | 'diff'         // Compare output to expected
+  | 'llm_judge'    // Use LLM to evaluate (subjective criteria)
   | 'agent_behavior'; // Evaluate agent behavior metrics
 
 /**

@@ -101,77 +101,24 @@ const PROMPTS = {
    * Evaluate a single answer on quality criteria
    */
   quality: (criteria: string, answer: string, context?: string) => {
-    const contextSection = context ? `\n\nContext:\n${context}` : '';
-    return `You are an expert code reviewer. Evaluate the following answer based on the criteria:
-
-${criteria}
-
-${contextSection}
-
-Answer to evaluate:
-${answer}
-
-Provide your evaluation in the following JSON format:
-{
-  "score": 0.0-1.0,
-  "reasoning": "Brief explanation of the score",
-  "criticisms": ["issue 1", "issue 2"],
-  "strengths": ["strength 1", "strength 2"]
-}
-
-The score should be a number between 0.0 (poor) and 1.0 (excellent).`;
+    const contextSection = context ? '\n\nContext:\n' + context : '';
+    return 'You are an expert code reviewer. Evaluate the following answer based on the criteria:\n\n' + criteria + contextSection + '\n\nAnswer to evaluate:\n' + answer + '\n\nProvide your evaluation in the following JSON format:\n{\n  "score": 0.0-1.0,\n  "reasoning": "Brief explanation of the score",\n  "criticisms": ["issue 1", "issue 2"],\n  "strengths": ["strength 1", "strength 2"]\n}\n\nThe score should be a number between 0.0 (poor) and 1.0 (excellent).';
   },
 
   /**
    * Compare two answers
    */
   comparison: (criteria: string, answer1: string, answer2: string, context?: string) => {
-    const contextSection = context ? `\n\nContext:\n${context}` : '';
-    return `You are an expert code reviewer. Compare the following two answers based on the criteria:
-
-${criteria}
-
-${contextSection}
-
-Answer 1:
-${answer1}
-
-Answer 2:
-${answer2}
-
-Provide your comparison in the following JSON format:
-{
-  "winner": "answer1" | "answer2" | "tie",
-  "score1": { "score": 0.0-1.0, "reasoning": "...", "criticisms": [], "strengths": [] },
-  "score2": { "score": 0.0-1.0, "reasoning": "...", "criticisms": [], "strengths": [] },
-  "reasoning": "Overall comparison reasoning"
-}`;
+    const contextSection = context ? '\n\nContext:\n' + context : '';
+    return 'You are an expert code reviewer. Compare the following two answers based on the criteria:\n\n' + criteria + contextSection + '\n\nAnswer 1:\n' + answer1 + '\n\nAnswer 2:\n' + answer2 + '\n\nProvide your comparison in the following JSON format:\n{\n  "winner": "answer1" | "answer2" | "tie",\n  "score1": { "score": 0.0-1.0, "reasoning": "...", "criticisms": [], "strengths": [] },\n  "score2": { "score": 0.0-1.0, "reasoning": "...", "criticisms": [], "strengths": [] },\n  "reasoning": "Overall comparison reasoning"\n}';
   },
 
   /**
    * Evaluate against a baseline
    */
   baseline: (criteria: string, answer: string, baseline: string, context?: string) => {
-    const contextSection = context ? `\n\nContext:\n${context}` : '';
-    return `You are an expert code reviewer. Evaluate the following answer against a human-graded baseline.
-
-${criteria}
-
-${contextSection}
-
-Baseline (human-graded):
-${baseline}
-
-Answer to evaluate:
-${answer}
-
-Provide your evaluation in the following JSON format:
-{
-  "score": 0.0-1.0,
-  "reasoning": "How this answer compares to the baseline",
-  "criticisms": ["issues compared to baseline"],
-  "strengths": ["strengths compared to baseline"]
-}`;
+    const contextSection = context ? '\n\nContext:\n' + context : '';
+    return 'You are an expert code reviewer. Evaluate the following answer against a human-graded baseline.\n\n' + criteria + contextSection + '\n\nBaseline (human-graded):\n' + baseline + '\n\nAnswer to evaluate:\n' + answer + '\n\nProvide your evaluation in the following JSON format:\n{\n  "score": 0.0-1.0,\n  "reasoning": "How this answer compares to the baseline",\n  "criticisms": ["issues compared to baseline"],\n  "strengths": ["strengths compared to baseline"]\n}';
   },
 };
 
@@ -193,12 +140,13 @@ export class LLMJudge {
   private cache: Map<string, LLMJudgeScore>;
 
   constructor(options: LLMJudgeOptions = {}) {
-    this.apiKey = options.apiKey || getEnvVar('ANTHROPIC_API_KEY', options.projectRoot || process.cwd());
+    const projectRoot = options.projectRoot || process.cwd();
+    this.apiKey = options.apiKey || (getEnvVar('ANTHROPIC_API_KEY', projectRoot) || '');
     this.model = options.model || 'claude-3-5-sonnet-20241022';
     this.maxTokens = options.maxTokens || 1024;
     this.temperature = options.temperature || 0.0;
     this.enableCache = options.enableCache ?? true;
-    this.projectRoot = options.projectRoot || process.cwd();
+    this.projectRoot = projectRoot;
     this.costTracker = {
       inputTokens: 0,
       outputTokens: 0,
@@ -252,6 +200,9 @@ export class LLMJudge {
       this.cache.set(cacheKey, result);
     }
 
+    if (!result) {
+      throw new Error('Failed to get comparison result');
+    }
     return {
       winner: result.winner,
       score1: result,
@@ -287,7 +238,7 @@ export class LLMJudge {
   /**
    * Call Claude API
    */
-  private async callClaude(prompt: string): Promise<LLMJudgeScore> {
+  private async callClaude(prompt: string): Promise<LLMJudgeScore | null> {
     if (!this.apiKey) {
       throw new Error('ANTHROPIC_API_KEY not set');
     }
@@ -301,9 +252,7 @@ export class LLMJudge {
       prompt,
       options: {
         model: this.model,
-        // Enable system prompt for caching
-        system: 'You are a code evaluation assistant. Always respond with valid JSON.',
-        // Don't load user/project settings
+        // Note: system prompt is not supported in this SDK version
         settingSources: [],
       },
     });
@@ -311,7 +260,7 @@ export class LLMJudge {
     let result: LLMJudgeScore | null = null;
 
     for await (const message of response) {
-      if (message.type === 'result' && message.subtype === 'success') {
+      if (message.type === 'result' && message.subtype === 'success' && (message as any).result) {
         const content = (message as any).result || '';
         result = this.parseResponse(content);
         break;
@@ -320,14 +269,6 @@ export class LLMJudge {
 
     if (!result) {
       throw new Error('Failed to parse LLM response');
-    }
-
-    // Update cost tracking
-    if (response && (response as any).usage) {
-      const usage = (response as any).usage;
-      this.costTracker.inputTokens += usage.input_tokens || 0;
-      this.costTracker.outputTokens += usage.output_tokens || 0;
-      this.costTracker.costUsd += usage.total_cost_usd || 0;
     }
 
     return result;
@@ -354,7 +295,7 @@ export class LLMJudge {
         strengths: data.strengths || [],
       };
     } catch (err) {
-      throw new Error(`Failed to parse LLM response: ${(err as Error).message}`);
+      throw new Error('Failed to parse LLM response: ' + (err as Error).message);
     }
   }
 
@@ -380,7 +321,7 @@ export class LLMJudge {
     ...args: string[]
   ): string {
     const str = args.join('|||');
-    return `${type}:${this.model}:${str.substring(0, 200)}`;
+    return type + ':' + this.model + ':' + str.substring(0, 200);
   }
 
   /**
@@ -461,7 +402,7 @@ export async function runLLMJudgeEvaluator(
         break;
 
       default:
-        throw new Error(`Unknown evaluation type: ${evaluator.evaluate}`);
+        throw new Error('Unknown evaluation type: ' + evaluator.evaluate);
     }
 
     const durationMs = Date.now() - startTime;
