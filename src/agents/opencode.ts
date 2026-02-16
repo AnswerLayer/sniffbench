@@ -16,7 +16,7 @@ import {
 } from './types.js';
 
 // Import SDK client dynamically since it's ESM-only
-let _createOpencodeClient: (() => any) | undefined; // SDK type not fully defined
+let _createOpencodeClient: (() => unknown) | undefined; // SDK type not fully defined
 const loadSDK = async () => {
   if (!_createOpencodeClient) {
     const sdkWrapper = await import('./opencode-sdk.mjs');
@@ -46,7 +46,7 @@ async function spawnServer(
     },
   });
 
-  const _url = await new Promise<string>((resolve, reject) => { // eslint-disable-line @typescript-eslint/no-unused-vars
+  const __url = await new Promise<string>((resolve, reject) => { // eslint-disable-line @typescript-eslint/no-unused-vars
     const id = setTimeout(() => {
       proc.kill();
       reject(new Error(`Timeout waiting for opencode server after ${timeoutMs}ms`));
@@ -157,12 +157,12 @@ export class OpencodeAgent implements AgentWrapper {
       const config = options.model
         ? { ...this.config, model: options.model }
         : this.config;
-      const { url, proc } = await spawnServer(cwd, config, 15000);
+      const { url: _url, proc } = await spawnServer(cwd, config, 15000);
       _serverProc = proc;
 
       const createClient = await loadSDK();
       if (!createClient) throw new Error("Failed to load SDK");
-      const client = createClient() as any;
+      const client = createClient() as unknown;
 
       const createResult = await client.session.create({});
       if (createResult.error) {
@@ -220,7 +220,7 @@ export class OpencodeAgent implements AgentWrapper {
           const eventAny = event as { properties?: unknown; data?: unknown };
           const props = eventAny.properties || eventAny.data || {};
           if (!props) continue;
-          const part = (props as { part?: unknown }).part || ({} as any);
+          const part = (props as { part?: unknown }).part || ({} as Record<string, unknown>);
           if (!part) continue;
 
           const partAny = part as { type?: string; text?: string; state?: { status?: string; input?: unknown; time?: { start?: number; end?: number }; output?: unknown }; callID?: string; callId?: string; tool?: string; tokens?: { input?: number; output?: number; cache?: { read?: number; write?: number }; total?: number }; cost?: number };

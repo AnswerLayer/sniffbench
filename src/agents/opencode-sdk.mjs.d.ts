@@ -2,6 +2,6 @@
  * Type declarations for opencode-sdk.mjs wrapper
  */
 
-declare const createOpencodeClient: any;
+declare const createOpencodeClient: unknown;
 
 export { createOpencodeClient };
