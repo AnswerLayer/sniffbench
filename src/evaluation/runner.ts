@@ -239,8 +239,8 @@ async function runSingleCase(
         permissionMode: 'acceptEdits',
       });
 
-      if (!agentResult.success) {
-        throw new Error(`Agent execution failed: ${agentResult.error}`);
+      if (!_agentResult.success) {
+        throw new Error(`Agent execution failed: ${_agentResult.error}`);
       }
 
       // Snapshot files the agent produced (before rubric evaluation)
@@ -255,7 +255,7 @@ async function runSingleCase(
         message: 'Evaluating with rubric...',
       });
 
-      const result = await evaluateWithRubric(caseData, sandbox, options, agentResult, agentFiles);
+      const result = await evaluateWithRubric(caseData, sandbox, options, _agentResult, _agentFiles);
       const durationMs = Date.now() - startTime;
 
       options.onProgress?.({
@@ -268,21 +268,21 @@ async function runSingleCase(
 
       return {
         ...result,
-        agentResponse: agentResult.answer,
-        agentToolCalls: agentResult.toolCalls.map((t) => ({
+        agentResponse: _agentResult.answer,
+        agentToolCalls: _agentResult.toolCalls.map((t) => ({
           name: t.name,
           durationMs: t.durationMs || 0,
           success: t.success || false,
         })),
-        agentModel: agentResult.model,
-        agentTokens: agentResult.tokens
+        agentModel: _agentResult.model,
+        agentTokens: _agentResult.tokens
           ? {
-              input: agentResult.tokens.inputTokens,
-              output: agentResult.tokens.outputTokens,
-              total: agentResult.tokens.totalTokens,
+              input: _agentResult.tokens.inputTokens,
+              output: _agentResult.tokens.outputTokens,
+              total: _agentResult.tokens.totalTokens,
             }
           : undefined,
-        agentFiles,
+        agentFiles: _agentFiles,
         durationMs,
         timestamp: new Date(),
       };
@@ -306,8 +306,8 @@ async function evaluateWithRubric(
   caseData: Case,
   sandbox: Sandbox,
   _options: RunnerOptions,
-  agentResult: AgentResult,
-  agentFiles: { path: string; content: string; changed: boolean }[]
+  _agentResult: AgentResult,
+  _agentFiles: { path: string; content: string; changed: boolean }[]
 ): Promise<CaseResult> {
   const registry = getRubricRegistry();
   const rubric = registry.resolve(caseData.rubric);
