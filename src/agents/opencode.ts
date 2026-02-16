@@ -46,7 +46,7 @@ async function spawnServer(
     },
   });
 
-  const url = await new Promise<string>((resolve, reject) => { // eslint-disable-line @typescript-eslint/no-unused-vars
+  const _url = await new Promise<string>((resolve, reject) => { // eslint-disable-line @typescript-eslint/no-unused-vars
     const id = setTimeout(() => {
       proc.kill();
       reject(new Error(`Timeout waiting for opencode server after ${timeoutMs}ms`));
@@ -79,7 +79,7 @@ async function spawnServer(
     });
   });
 
-  return { url, proc };
+  return { url: _url, proc };
 }
 
 /**
@@ -226,7 +226,7 @@ export class OpencodeAgent implements AgentWrapper {
           const partAny = part as { type?: string; text?: string; state?: { status?: string; input?: unknown; time?: { start?: number; end?: number }; output?: unknown }; callID?: string; callId?: string; tool?: string; tokens?: { input?: number; output?: number; cache?: { read?: number; write?: number }; total?: number }; cost?: number };
           if (partAny.type === 'text') {
             // Streaming text delta
-            const delta = (props as any).delta || '';
+            const delta = (props as { delta?: string }).delta || '';
             if (delta) {
               answer += delta;
               options.onEvent?.({ type: 'text_delta', text: delta });
@@ -296,7 +296,7 @@ export class OpencodeAgent implements AgentWrapper {
               });
             }
           } else if (partAny.type === 'reasoning') {
-            const text = (props as any).delta || partAny.text || '';
+            const text = (props as { delta?: string }).delta || partAny.text || '';
             if (!text) continue;
             if (text) {
               options.onEvent?.({ type: 'thinking', text });
@@ -339,7 +339,7 @@ export class OpencodeAgent implements AgentWrapper {
           }
           // Extract final answer text from message parts if we haven't captured it via deltas
           if (props && (props as { parts?: unknown[] } & Record<string, unknown>).parts) {
-            for (const p of (props as { parts?: unknown[] }).parts ?? [] ?? []) {
+            for (const p of (props as { parts?: unknown[] | null | undefined }).parts ?? []) {
               if ((p as { type?: string; text?: string }).type === 'text' && (p as { type?: string; text?: string }).text) {
                 answer += (p as { type?: string; text?: string }).text;
               }
@@ -379,7 +379,7 @@ export class OpencodeAgent implements AgentWrapper {
           // Find the last assistant message
           for (let i = messages.length - 1; i >= 0; i--) {
             const msg = messages[i] as { role?: string; parts?: unknown[] };
-            if ((msg as any).role === 'assistant' && msg.parts) {
+            if ((msg as { role?: string }).role === 'assistant' && msg.parts) {
               for (const p of msg.parts) {
                 if ((p as { type?: string; text?: string }).type === 'text' && (p as { type?: string; text?: string }).text) {
                   answer += (p as { type?: string; text?: string }).text;
