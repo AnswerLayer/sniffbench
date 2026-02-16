@@ -464,7 +464,7 @@ export async function runLLMJudgeEvaluator(
 
     return {
       name: evaluator.name || 'llm_judge',
-      type: 'llm_judge',
+      type: 'llm_judge_comparison',
       score: score.score,
       passed: score.passed,
       evidence: score.reasoning,
@@ -473,21 +473,21 @@ export async function runLLMJudgeEvaluator(
         strengths: score.strengths,
         cost: judge.getCostTracker(),
       },
-      durationMs,
+      durationMs: Date.now() - startTime,
     };
   } catch (err) {
     const durationMs = Date.now() - startTime;
 
     return {
       name: evaluator.name || 'llm_judge',
-      type: 'llm_judge',
+      type: 'llm_judge_comparison',
       score: 0,
       passed: false,
       evidence: (err as Error).message,
       details: {
         error: (err as Error).message,
       },
-      durationMs,
+      durationMs: Date.now() - startTime,
     };
   }
 }
@@ -529,7 +529,7 @@ export async function runLLMJudgeComparisonEvaluator(
 
     return {
       name: evaluator.name || 'llm_judge_comparison',
-      type: 'llm_judge',
+      type: 'llm_judge_comparison',
       score: result.winner === 'tie' ? 0.5 : result.winner === 'answer1' ? 1.0 : 0.0,
       passed: result.winner !== 'answer2',
       evidence: result.reasoning,
@@ -539,21 +539,21 @@ export async function runLLMJudgeComparisonEvaluator(
         score2: result.score2,
         cost: judge.getCostTracker(),
       },
-      durationMs,
+      durationMs: Date.now() - startTime,
     };
   } catch (err) {
     const durationMs = Date.now() - startTime;
 
     return {
       name: evaluator.name || 'llm_judge_comparison',
-      type: 'llm_judge',
+      type: 'llm_judge_comparison',
       score: 0,
       passed: false,
       evidence: (err as Error).message,
       details: {
         error: (err as Error).message,
       },
-      durationMs,
+      durationMs: Date.now() - startTime,
     };
   }
 }

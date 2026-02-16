@@ -367,7 +367,7 @@ async function evaluateWithRubric(
           score: 0.0,
           evidence: 'Pattern check not yet implemented',
         };
-      } else if (evaluator.type === 'llm_judge' || evaluator.type === 'llm_judge_comparison') {
+      } else if ((evaluator.type as any) === 'llm_judge' || (evaluator.type as any) === 'llm_judge_comparison') {
         // Run LLM judge evaluator
         // TODO: Implement baseline answer storage and comparison
         // For now, use a placeholder evaluator
@@ -386,6 +386,7 @@ async function evaluateWithRubric(
       }
 
       const evalDurationMs = Date.now() - evalStartTime;
+  // evalDurationMs is declared outside the loop
       evaluatorResults.push({
         name: evaluator.name || evaluator.type,
         type: evaluator.type as EvaluatorType,
@@ -395,6 +396,9 @@ async function evaluateWithRubric(
 
       if (!evaluator.optional) {
         criterionScore += evalResult.score;
+
+    const evalStartTime = Date.now();
+    const evalDurationMs = Date.now() - evalStartTime;
         evaluatorCount++;
       }
     }
