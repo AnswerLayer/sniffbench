@@ -452,7 +452,7 @@ async function evaluateWithRubric(
     evidence: `Overall score: ${overallScore.toFixed(2)}%`,
     criteria: criteriaResults,
     evaluators: [],
-    durationMs: Date.now() - (startTime || Date.now()),
+    durationMs: Date.now() - evalStartTime,
     timestamp: new Date(),
   };
 }

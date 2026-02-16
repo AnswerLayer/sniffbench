@@ -163,7 +163,7 @@ export class LLMJudge {
     criteria: string,
     answer: string,
     context?: string
-  ): Promise<LLMJudgeScore> {
+  ): Promise<LLMJudgeScore | ComparisonResult> {
     const cacheKey = this.generateCacheKey('quality', criteria, answer, context || '');
     if (this.enableCache && this.cache.has(cacheKey)) {
       return this.cache.get(cacheKey)!;
@@ -238,7 +238,7 @@ export class LLMJudge {
   /**
    * Call Claude API
    */
-  private async callClaude(prompt: string): Promise<LLMJudgeScore | ComparisonResult | null> {
+  private async callClaude(prompt: string): Promise<LLMJudgeScore | ComparisonResult> {
     if (!this.apiKey) {
       throw new Error('ANTHROPIC_API_KEY not set');
     }
@@ -274,12 +274,6 @@ export class LLMJudge {
     return result;
   }
 
-  /**
-   * Parse LLM response into structured score
-   */
-  /**
-   * Parse LLM response into structured score or comparison
-   */
   /**
    * Parse LLM response into structured score or comparison
    */
@@ -328,20 +322,6 @@ export class LLMJudge {
     }
   }
 
-      const data = JSON.parse(jsonMatch[0]);
-
-      return {
-        score: this.normalizeScore(data.score),
-        passed: this.normalizeScore(data.score) >= 0.7, // Default threshold: 70%
-        reasoning: data.reasoning || '',
-        criticisms: data.criticisms || [],
-        strengths: data.strengths || [],
-      };
-    } catch (err) {
-      throw new Error('Failed to parse LLM response: ' + (err as Error).message);
-    }
-  }
-
   /**
    * Normalize score to 0.0-1.0 range
    */
@@ -363,6 +343,7 @@ export class LLMJudge {
     type: string,
     ...args: string[]
   ): string {
+  ): Promise<LLMJudgeScore | ComparisonResult> {
     const str = args.filter((arg): arg is string => arg !== undefined).join('|||');
     return type + ':' + this.model + ':' + str.substring(0, 200);
   }
