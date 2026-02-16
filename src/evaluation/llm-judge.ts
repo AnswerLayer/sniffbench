@@ -163,7 +163,7 @@ export class LLMJudge {
     criteria: string,
     answer: string,
     context?: string
-  ): Promise<LLMJudgeScore> {
+  ): Promise<unknown> {
     const cacheKey = this.generateCacheKey('quality', criteria, answer, context || '');
     if (this.enableCache && this.cache.has(cacheKey)) {
       return this.cache.get(cacheKey)!;
@@ -176,7 +176,10 @@ export class LLMJudge {
       this.cache.set(cacheKey, result);
     }
 
-    return result as LLMJudgeScore;
+    if (!result || 'score' in result) {
+      return result as LLMJudgeScore;
+    }
+    throw new Error('Unexpected result type from evaluate');
   }
 
   /**
@@ -214,7 +217,7 @@ export class LLMJudge {
     answer: string,
     baseline: string,
     context?: string
-  ): Promise<LLMJudgeScore> {
+  ): Promise<unknown> {
     const cacheKey = this.generateCacheKey('baseline', criteria, answer, baseline, context || '');
     if (this.enableCache && this.cache.has(cacheKey)) {
       return this.cache.get(cacheKey)!;
@@ -227,7 +230,10 @@ export class LLMJudge {
       this.cache.set(cacheKey, result);
     }
 
-    return result as LLMJudgeScore;
+    if (!result || 'score' in result) {
+      return result as LLMJudgeScore;
+    }
+    throw new Error('Unexpected result type from evaluateAgainstBaseline');
   }
 
   /**

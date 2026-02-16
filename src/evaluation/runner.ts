@@ -321,9 +321,9 @@ async function evaluateWithRubric(
     const evaluatorResults: EvaluatorResult[] = [];
     let criterionScore = 0;
     let evaluatorCount = 0;
+    let evalStartTime = Date.now();
 
     for (const evaluator of criterion.evaluators) {
-      const evalStartTime = Date.now();
       let evalResult: Omit<EvaluatorResult, 'name' | 'type' | 'durationMs'>;
 
       if (evaluator.type === 'command') {
@@ -395,7 +395,6 @@ async function evaluateWithRubric(
       }
 
       const evalDurationMs = Date.now() - evalStartTime;
-
       evaluatorResults.push({
         name: evaluator.name || evaluator.type,
         type: evaluator.type as EvaluatorType,
