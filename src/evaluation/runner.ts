@@ -24,6 +24,7 @@ import { createSandboxManager, checkDocker, RECOMMENDED_IMAGES } from '../sandbo
 import { Sandbox, SandboxConfig } from '../sandbox/types';
 import { getRubricRegistry } from '../rubrics/loader';
 import { getAgent } from '../agents/registry';
+import { runLLMJudgeEvaluator, runLLMJudgeComparisonEvaluator } from './llm-judge';
 import type { AgentResult } from '../agents/types';
 
 export interface RunnerOptions {
@@ -361,6 +362,33 @@ async function evaluateWithRubric(
           passed: false,
           score: 0.0,
           evidence: 'Pattern check not yet implemented',
+        };
+      } else if (evaluator.type === 'llm_judge') {
+        // Run LLM judge evaluator
+        const result = await runLLMJudgeEvaluator(evaluator, agentResult.answer, agentFiles);
+        evalResult = {
+          passed: result.passed,
+          score: result.score,
+          evidence: result.evidence,
+          details: result.details,
+        };
+      } else if (evaluator.type === 'llm_judge_comparison') {
+        // Run LLM judge comparison evaluator
+        // TODO: Implement baseline answer storage and comparison
+        // For now, use a placeholder evaluator
+        evalResult = {
+          passed: false,
+          score: 0.0,
+          evidence: 'LLM judge comparison not yet fully implemented',
+        };
+      } else if (evaluator.type === 'llm_judge') {
+        // Run LLM judge evaluator
+        const result = await runLLMJudgeEvaluator(evaluator, agentResult.answer, agentFiles);
+        evalResult = {
+          passed: result.passed,
+          score: result.score,
+          evidence: result.evidence,
+          details: result.details,
         };
       } else {
         // Other evaluator types (llm_judge, benchmark, etc.) - not implemented
