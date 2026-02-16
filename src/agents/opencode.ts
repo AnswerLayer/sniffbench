@@ -16,7 +16,7 @@ import {
 } from './types.js';
 
 // Import SDK client dynamically since it's ESM-only
-let _createOpencodeClient: (() => any) | undefined; // SDK type not fully defined
+let _createOpencodeClient: (() => any) | undefined; 
 const loadSDK = async () => {
   if (!_createOpencodeClient) {
     const sdkWrapper = await import('./opencode-sdk.mjs');
@@ -46,7 +46,7 @@ async function spawnServer(
     },
   });
 
-  const __url = await new Promise<string>((resolve, reject) => { // eslint-disable-line @typescript-eslint/no-unused-vars
+  const _url = await new Promise<string>((resolve, reject) => { // eslint-disable-line @typescript-eslint/no-unused-vars
     const id = setTimeout(() => {
       proc.kill();
       reject(new Error(`Timeout waiting for opencode server after ${timeoutMs}ms`));
@@ -79,7 +79,7 @@ async function spawnServer(
     });
   });
 
-  return { url: _url, proc };
+  return { url, proc };
 }
 
 /**
