@@ -288,8 +288,8 @@ export class LLMJudge {
     let result: LLMJudgeScore | ComparisonResult | null = null;
 
     for await (const message of response) {
-      if (message.type === 'result' && message.subtype === 'success' && (message as any).result) {
-        const content = (message as any).result as string || '';
+      if (message.type === 'result' && message.subtype === 'success' && (message as { result?: string }).result) {
+        const content = (message as { result?: string }).result as string || '';
         result = this.parseResponse(content);
         break;
       }
