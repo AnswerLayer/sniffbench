@@ -16,7 +16,7 @@ import {
 } from './types.js';
 
 // Import SDK client dynamically since it's ESM-only
-let _createOpencodeClient: (() => unknown) | undefined; // SDK type not fully defined
+let _createOpencodeClient: (() => any) | undefined; // SDK type not fully defined
 const loadSDK = async () => {
   if (!_createOpencodeClient) {
     const sdkWrapper = await import('./opencode-sdk.mjs');
@@ -162,7 +162,7 @@ export class OpencodeAgent implements AgentWrapper {
 
       const createClient = await loadSDK();
       if (!createClient) throw new Error("Failed to load SDK");
-      const client = createClient() as unknown;
+      const client = createClient() as any; // eslint-disable-line @typescript-eslint/no-explicit-any
 
       const createResult = await client.session.create({});
       if (createResult.error) {
@@ -177,7 +177,7 @@ export class OpencodeAgent implements AgentWrapper {
 
       // Subscribe to SSE events BEFORE sending the prompt so we capture everything
       // event.subscribe() returns ServerSentEventsResult directly (not { data, error })
-      const sseResult = await client.event.subscribe({}) as unknown;
+      const sseResult = await client.event.subscribe({}) as any; // eslint-disable-line @typescript-eslint/no-explicit-any
       const stream: AsyncIterable<unknown> | undefined =
         (sseResult as { stream?: AsyncIterable<unknown>; data?: { stream?: AsyncIterable<unknown> } })?.stream ||
         (sseResult as { data?: { stream?: AsyncIterable<unknown> } })?.data?.stream ||
