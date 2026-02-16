@@ -162,7 +162,7 @@ export class OpencodeAgent implements AgentWrapper {
 
       const createClient = await loadSDK();
       if (!createClient) throw new Error("Failed to load SDK");
-      const client = createClient();
+      const client = createClient() as any;
 
       const createResult = await client.session.create({});
       if (createResult.error) {
