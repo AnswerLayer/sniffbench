@@ -39,20 +39,6 @@ export type CaseSource = 'bootstrap' | 'generated' | 'manual' | 'imported' | 'cl
  */
 export type CaseDifficulty = 'easy' | 'medium' | 'hard';
 
-
-/**
- * Difficulty ladder configuration for a case
- */
-export interface DifficultyLadder {
-  /** Base case (the original task) */
-  base: Case;
-
-  /** Scaffolding levels for each difficulty */
-  levels: Record<CaseDifficulty, ScaffoldingLevel>;
-
-  /** Whether to auto-generate variants on load */
-  autoGenerate?: boolean;
-}
 /**
  * Agent behavior expectations for a case
  */
@@ -123,9 +109,6 @@ export interface Case {
 
   /** Additional notes or hints (not shown to agent) */
   notes?: string;
-
-  // Difficulty ladder configuration for generating variants
-  difficultyLadder?: DifficultyLadder;
 
   // Metadata added by loader
   /** Source file path (added by loader) */

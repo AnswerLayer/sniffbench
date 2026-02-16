@@ -226,7 +226,7 @@ export function defaultMediumScaffolding(baseCase: Case): ScaffoldingLevel {
  * Default scaffolding for hard level
  * - Minimal context, agent must discover
  */
-export function defaultHardScaffolding(baseCase: Case): ScaffoldingLevel {
+export function defaultHardScaffolding(_baseCase: Case): ScaffoldingLevel {
   return {
     level: 'hard',
     hints: [
@@ -241,13 +241,13 @@ export function defaultHardScaffolding(baseCase: Case): ScaffoldingLevel {
 /**
  * Create a difficulty ladder with default scaffolding
  */
-export function createDefaultLadder(baseCase: Case): DifficultyLadder {
+export function createDefaultLadder(_baseCase: Case): DifficultyLadder {
   return {
-    base: baseCase,
+    base: _baseCase,
     levels: {
-      easy: defaultEasyScaffolding(baseCase),
-      medium: defaultMediumScaffolding(baseCase),
-      hard: defaultHardScaffolding(baseCase),
+      easy: defaultEasyScaffolding(_baseCase),
+      medium: defaultMediumScaffolding(_baseCase),
+      hard: defaultHardScaffolding(_baseCase),
     },
     autoGenerate: true,
   };
