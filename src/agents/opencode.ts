@@ -204,7 +204,7 @@ export class OpencodeAgent implements AgentWrapper {
       let answer = '';
       let numTurns = 0;
       let totalTokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
-      let totalCost = 0;
+      let totalCost: number = 0;
       const deadline = Date.now() + timeoutMs - 5000;
 
       for await (const event of stream) {
@@ -213,25 +213,26 @@ export class OpencodeAgent implements AgentWrapper {
           break;
         }
 
-        const eventType = (event as { type?: string; event?: string })?.type || (event as { type?: string; event?: string })?.event || '';
+        const eventType = (event as { type?: string; event?: string })?.type ?? (event as { type?: string; event?: string })?.event ?? '';
 
         if (eventType === 'message.part.updated') {
           const props = (event as { properties?: unknown; data?: unknown }).properties || (event as { properties?: unknown; data?: unknown }).data || {};
           if (!props) continue;
-          const part = (props as { part?: unknown }).part || {};
+          const part = (props as { part?: unknown }).part || ({} as any);
           if (!part) continue;
 
-          if (part.type === 'text') {
+          const partAny = part as any;
+          if (partAny.type === 'text') {
             // Streaming text delta
             const delta = (props as any).delta || '';
             if (delta) {
               answer += delta;
               options.onEvent?.({ type: 'text_delta', text: delta });
             }
-          } else if ((part as { type?: string }).type === 'tool') {
-            const status = (part as any).state?.status || '';
-            const callID = (part as any).callID || (part as any).callId || '';
-            const toolName = (part as any).tool || 'unknown';
+          } else if (partAny.type === 'tool') {
+            const status = partAny.state?.status || '';
+            const callID = partAny.callID || partAny.callId || '';
+            const toolName: string = partAny.tool || 'unknown';
             if (!toolName) continue;
 
             if (status === 'running' || status === 'pending') {
@@ -240,7 +241,7 @@ export class OpencodeAgent implements AgentWrapper {
                 const toolCall: ToolCall = {
                   id: callID,
                   name: toolName,
-                  input: (part as any).state?.input || {},
+                  input: partAny.state?.input || {},
                   timestamp: Date.now(),
                 };
                 toolCalls.push(toolCall);
@@ -250,26 +251,26 @@ export class OpencodeAgent implements AgentWrapper {
             } else if (status === 'completed') {
               const existing = toolCalls.find((t) => t.id === callID);
               if (existing) {
-                existing.durationMs = (part as any).state?.time
-                  ? (part.state.time.end - part.state.time.start) * 1000
+                existing.durationMs = partAny.state?.time
+                  ? (partAny.state.time.end - partAny.state.time.start) * 1000
                   : Date.now() - existing.timestamp;
                 existing.success = true;
-                existing.result = (part as any).state?.output
-                  ? String(part.state.output).substring(0, 500)
+                existing.result = partAny.state?.output
+                  ? String(partAny.state.output).substring(0, 500)
                   : undefined;
               } else {
                 // Tool completed without a prior start event (can happen if subscription started late)
                 toolCalls.push({
                   id: callID,
                   name: toolName,
-                  input: (part as any).state?.input || {},
+                  input: partAny.state?.input || {},
                   timestamp: Date.now(),
-                  durationMs: (part as any).state?.time
-                    ? (part.state.time.end - part.state.time.start) * 1000
+                  durationMs: partAny.state?.time
+                    ? (partAny.state.time.end - partAny.state.time.start) * 1000
                     : 0,
                   success: true,
-                  result: (part as any).state?.output
-                    ? String(part.state.output).substring(0, 500)
+                  result: partAny.state?.output
+                    ? String(partAny.state.output).substring(0, 500)
                     : undefined,
                 });
               }
@@ -292,24 +293,25 @@ export class OpencodeAgent implements AgentWrapper {
                 durationMs: existing?.durationMs || 0,
               });
             }
-          } else if ((part as { type?: string }).type === 'reasoning') {
-            const text = (props as any).delta || (part as any).text || '';
+          } else if (partAny.type === 'reasoning') {
+            const text = (props as any).delta || partAny.text || '';
             if (!text) continue;
             if (text) {
               options.onEvent?.({ type: 'thinking', text });
             }
-          } else if ((part as { type?: string }).type === 'step-finish') {
+          } else if (partAny.type === 'step-finish') {
             numTurns++;
             // Accumulate per-step tokens/cost
-            if (part.tokens) {
-              totalTokens.input += part.tokens.input || 0;
-              totalTokens.output += part.tokens.output || 0;
-              totalTokens.cacheRead += part.tokens.cache?.read || 0;
-              totalTokens.cacheWrite += part.tokens.cache?.write || 0;
-              totalTokens.total += part.tokens.total || 0;
+            const partTyped = partAny as { tokens?: { input?: number; output?: number; cache?: { read?: number; write?: number }; total?: number }; cost?: number };
+            if (partTyped.tokens) {
+              totalTokens.input += partTyped.tokens.input || 0;
+              totalTokens.output += partTyped.tokens.output || 0;
+              totalTokens.cacheRead += partTyped.tokens.cache?.read || 0;
+              totalTokens.cacheWrite += partTyped.tokens.cache?.write || 0;
+              totalTokens.total += partTyped.tokens.total || 0;
             }
-            if (part.cost) {
-              totalCost += part.cost;
+            if (partTyped.cost) {
+              totalCost += partTyped.cost;
             }
           }
         } else if (eventType === 'message.updated') {
