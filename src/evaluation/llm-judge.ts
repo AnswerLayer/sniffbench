@@ -182,6 +182,12 @@ export class LLMJudge {
     if (!result) {
       return null;
     }
+    
+    // Ensure we return LLMJudgeScore, not ComparisonResult
+    if ('score1' in result) {
+      throw new Error('Unexpected ComparisonResult returned from evaluate method');
+    }
+    
     return result as LLMJudgeScore;
   }
 
@@ -212,6 +218,12 @@ export class LLMJudge {
     if (!result) {
       return null;
     }
+    
+    // Ensure we return ComparisonResult, not LLMJudgeScore
+    if ('score' in result) {
+      throw new Error('Unexpected LLMJudgeScore returned from compare method');
+    }
+    
     return result as ComparisonResult;
   }
 
@@ -242,6 +254,12 @@ export class LLMJudge {
     if (!result) {
       return null;
     }
+    
+    // Ensure we return LLMJudgeScore, not ComparisonResult
+    if ('score1' in result) {
+      throw new Error('Unexpected ComparisonResult returned from evaluateAgainstBaseline method');
+    }
+    
     return result as LLMJudgeScore;
   }
 
@@ -496,14 +514,14 @@ export async function runLLMJudgeComparisonEvaluator(
   const judge = new LLMJudge(options);
 
   try {
-    const comparison = await judge.compare(
+    const result = await judge.compare(
       'Compare the quality and correctness of these two answers.',
       answer1,
       answer2,
       context || undefined
     );
 
-    if (!comparison) {
+    if (!result) {
       throw new Error('LLM judge comparison failed to produce a result');
     }
 
@@ -512,13 +530,13 @@ export async function runLLMJudgeComparisonEvaluator(
     return {
       name: evaluator.name || 'llm_judge_comparison',
       type: 'llm_judge',
-      score: comparison.winner === 'tie' ? 0.5 : comparison.winner === 'answer1' ? 1.0 : 0.0,
-      passed: comparison.winner !== 'answer2',
-      evidence: comparison.reasoning,
+      score: result.winner === 'tie' ? 0.5 : result.winner === 'answer1' ? 1.0 : 0.0,
+      passed: result.winner !== 'answer2',
+      evidence: result.reasoning,
       details: {
-        winner: comparison.winner,
-        score1: comparison.score1,
-        score2: comparison.score2,
+        winner: result.winner,
+        score1: result.score1,
+        score2: result.score2,
         cost: judge.getCostTracker(),
       },
       durationMs,
