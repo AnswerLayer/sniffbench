@@ -47,7 +47,7 @@ async function spawnServer(
   });
 
   const _url = await new Promise<string>((resolve, reject) => { // eslint-disable-line @typescript-eslint/no-unused-vars
-    const id = setTimeout(() => {
+    const _id = setTimeout(() => {
       proc.kill();
       reject(new Error(`Timeout waiting for opencode server after ${timeoutMs}ms`));
     }, timeoutMs);
@@ -79,7 +79,7 @@ async function spawnServer(
     });
   });
 
-  return { url, proc };
+  return { url: _url, proc };
 }
 
 /**
