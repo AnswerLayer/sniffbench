@@ -175,7 +175,7 @@ export class LLMJudge {
     const prompt = PROMPTS.quality(criteria, answer, context);
     const result = await this.callClaude(prompt);
 
-    if (this.enableCache) {
+    if (this.enableCache && result) {
       this.cache.set(cacheKey, result);
     }
 
@@ -205,7 +205,7 @@ export class LLMJudge {
     const prompt = PROMPTS.comparison(criteria, answer1, answer2, context);
     const result = await this.callClaude(prompt);
 
-    if (this.enableCache) {
+    if (this.enableCache && result) {
       this.cache.set(cacheKey, result);
     }
 
@@ -235,7 +235,7 @@ export class LLMJudge {
     const prompt = PROMPTS.baseline(criteria, answer, baseline, context);
     const result = await this.callClaude(prompt);
 
-    if (this.enableCache) {
+    if (this.enableCache && result) {
       this.cache.set(cacheKey, result);
     }
 
@@ -400,7 +400,7 @@ export async function runLLMJudgeEvaluator(
   const judge = new LLMJudge(options);
 
   try {
-    let score: LLMJudgeScore;
+    let score: LLMJudgeScore | null = null;
 
     switch (evaluator.evaluate) {
       case 'code_quality':

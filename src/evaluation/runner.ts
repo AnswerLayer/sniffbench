@@ -25,6 +25,7 @@ import { Sandbox, SandboxConfig } from '../sandbox/types';
 import { getRubricRegistry } from '../rubrics/loader';
 import { getAgent } from '../agents/registry';
 import type { AgentResult } from '../agents/types';
+import { runLLMJudgeEvaluator } from './llm-judge';
 
 export interface RunnerOptions {
   /** Agent being evaluated (for logging) */
