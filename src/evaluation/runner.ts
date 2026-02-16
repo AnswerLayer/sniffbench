@@ -384,9 +384,6 @@ async function evaluateWithRubric(
           evidence: `Evaluator type '${evaluator.type}' not yet implemented`,
         };
       }
-
-      const evalDurationMs = Date.now() - evalStartTime;
-  // evalDurationMs is declared outside the loop
       evaluatorResults.push({
         name: evaluator.name || evaluator.type,
         type: evaluator.type as EvaluatorType,
@@ -396,9 +393,6 @@ async function evaluateWithRubric(
 
       if (!evaluator.optional) {
         criterionScore += evalResult.score;
-
-    const evalStartTime = Date.now();
-    const evalDurationMs = Date.now() - evalStartTime;
         evaluatorCount++;
       }
     }

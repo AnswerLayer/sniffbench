@@ -460,7 +460,7 @@ export async function runLLMJudgeEvaluator(
       throw new Error('LLM judge evaluation failed to produce a score');
     }
 
-    const durationMs = Date.now() - startTime;
+    const _durationMs = Date.now() - startTime;
 
     return {
       name: evaluator.name || 'llm_judge',
@@ -476,7 +476,7 @@ export async function runLLMJudgeEvaluator(
       durationMs: Date.now() - startTime,
     };
   } catch (err) {
-    const durationMs = Date.now() - startTime;
+    const _durationMs = Date.now() - startTime;
 
     return {
       name: evaluator.name || 'llm_judge',
@@ -525,7 +525,7 @@ export async function runLLMJudgeComparisonEvaluator(
       throw new Error('LLM judge comparison failed to produce a result');
     }
 
-    const durationMs = Date.now() - startTime;
+    const _durationMs = Date.now() - startTime;
 
     return {
       name: evaluator.name || 'llm_judge_comparison',
@@ -542,7 +542,7 @@ export async function runLLMJudgeComparisonEvaluator(
       durationMs: Date.now() - startTime,
     };
   } catch (err) {
-    const durationMs = Date.now() - startTime;
+    const _durationMs = Date.now() - startTime;
 
     return {
       name: evaluator.name || 'llm_judge_comparison',
