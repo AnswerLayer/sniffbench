@@ -1,0 +1,68 @@
+id: bootstrap-015
+title: "Improve Code Readability"
+prompt: |
+  The following JavaScript code is functional but has poor readability due to
+  unclear naming, complex logic, and lack of structure.
+
+  Improve the code by:
+  - Renaming variables and functions to be descriptive
+  - Breaking down complex functions
+  - Adding comments where needed
+  - Following naming conventions
+  - Improving code structure
+  - Making the code self-documenting
+
+  Run: node readability_test.js
+
+source: bootstrap
+category: code-quality
+language: javascript
+difficulty: easy
+
+tags:
+  - javascript
+  - code-quality
+  - readability
+  - maintainability
+
+files:
+  - path: data_processor.js
+    content: |
+      function c(d, t, m) {
+        if (d <= 0) return 0;
+        if (m == 'domestic') {
+          if (d < 5) return 5;
+          if (d < 10) return 10;
+          if (d < 20) return 15;
+          return 25;
+        }
+        if (m == 'international') {
+          if (t == 'express') {
+            if (d < 5) return 20;
+            if (d < 10) return 35;
+            return 50;
+          }
+          if (d < 5) return 15;
+          if (d < 10) return 25;
+          return 40;
+        }
+        return null;
+      }
+
+      function p(d, u) {
+        const r = c(d, 'standard', 'international');
+        if (r === null) return null;
+        const s = r * 0.1;
+        const f = s + 2.5;
+        return f;
+      }
+
+      function s(d, t, m) {
+        const r = c(d, t, m);
+        if (r === null) return null;
+        const s = r * 0.1;
+        const f = s + 2.5;
+        return f;
+      }
+
+      module.exports = { c, p, s };

@@ -1,0 +1,70 @@
+id: bootstrap-016
+title: "Add Proper Logging and Monitoring"
+prompt: |
+  The following Node.js application has no logging or monitoring. Add comprehensive
+  logging to track application behavior and performance.
+
+  The logging should:
+  - Log important events (user actions, errors, state changes)
+  - Include contextual information (timestamps, user IDs, request IDs)
+  - Use appropriate log levels (debug, info, warn, error)
+  - Log performance metrics
+  - Support structured logging
+  - Make logs searchable and analyzable
+
+  Run: node logging_test.js
+
+source: bootstrap
+category: observability
+language: javascript
+difficulty: medium
+
+tags:
+  - javascript
+  - logging
+  - monitoring
+  - observability
+
+files:
+  - path: api_server.js
+    content: |
+      const http = require('http');
+
+      // Simple HTTP server without logging
+      const server = http.createServer((req, res) => {
+        const url = req.url;
+        const method = req.method;
+
+        if (url === '/api/users' && method === 'GET') {
+          // Get all users
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify([
+            { id: 1, name: 'Alice', email: 'alice@example.com' },
+            { id: 2, name: 'Bob', email: 'bob@example.com' }
+          ]));
+        } else if (url === '/api/users' && method === 'POST') {
+          // Create user
+          let body = '';
+          req.on('data', chunk => body += chunk);
+          req.on('end', () => {
+            const user = JSON.parse(body);
+            res.writeHead(201, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ id: 3, ...user }));
+          });
+        } else if (url === '/api/users' && method === 'PUT') {
+          // Update user
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ message: 'User updated' }));
+        } else if (url === '/api/users' && method === 'DELETE') {
+          // Delete user
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ message: 'User deleted' }));
+        } else {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Not found' }));
+        }
+      });
+
+      server.listen(3000, () => {
+        console.log('Server running on port 3000');
+      });

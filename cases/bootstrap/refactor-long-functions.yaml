@@ -1,0 +1,153 @@
+id: bootstrap-020
+title: "Refactor Long Functions into Smaller Ones"
+prompt: |
+  The following Python function is too long and complex. Refactor it into
+  smaller, more focused functions that are easier to understand and maintain.
+
+  The refactoring should:
+  - Break down the long function into smaller functions
+  - Give each function a single, clear responsibility
+  - Improve code readability
+  - Maintain the same functionality
+  - Add proper documentation
+  - Follow function decomposition best practices
+
+  Run: python long_function_test.py
+
+source: bootstrap
+category: refactoring
+language: python
+difficulty: medium
+
+tags:
+  - python
+  - refactoring
+  - code-quality
+  - function-decomposition
+
+files:
+  - path: order_processor.py
+    content: |
+      def process_order(order_data):
+          """
+          Process an order with complex validation, calculation, and notification logic.
+          This function is too long and should be refactored.
+          """
+          # Validate order data
+          if not order_data or not isinstance(order_data, dict):
+              raise ValueError("Invalid order data")
+
+          # Validate customer
+          customer = order_data.get('customer')
+          if not customer or not isinstance(customer, dict):
+              raise ValueError("Invalid customer data")
+
+          # Validate shipping address
+          shipping = customer.get('shipping')
+          if not shipping or not isinstance(shipping, dict):
+              raise ValueError("Invalid shipping address")
+
+          # Validate items
+          items = order_data.get('items')
+          if not items or not isinstance(items, list):
+              raise ValueError("Invalid items")
+
+          # Calculate subtotal
+          subtotal = 0.0
+          for item in items:
+              if not item or not isinstance(item, dict):
+                  continue
+              price = item.get('price', 0)
+              quantity = item.get('quantity', 0)
+              subtotal += price * quantity
+
+          # Calculate tax
+          tax_rate = 0.08
+          tax = subtotal * tax_rate
+
+          # Calculate shipping cost
+          weight = 0
+          for item in items:
+              if not item or not isinstance(item, dict):
+                  continue
+              weight += item.get('weight', 0)
+
+          if weight < 1:
+              shipping_cost = 5.99
+          elif weight < 5:
+              shipping_cost = 9.99
+          elif weight < 10:
+              shipping_cost = 14.99
+          else:
+              shipping_cost = 19.99
+
+          # Calculate total
+          total = subtotal + tax + shipping_cost
+
+          # Apply discount if applicable
+          discount = 0.0
+          if customer.get('is_premium', False):
+              discount = total * 0.1
+          elif subtotal > 100:
+              discount = 10.0
+
+          final_total = total - discount
+
+          # Generate order number
+          import random
+          import string
+          order_number = 'ORD-' + ''.join(random.choices(string.digits, k=8))
+
+          # Save order to database
+          # (In a real application, this would save to a database)
+          print(f"Order {order_number} saved to database")
+
+          # Send confirmation email
+          email = customer.get('email')
+          if email:
+              print(f"Sending confirmation email to {email}")
+
+          # Send shipping notification
+          if shipping:
+              print(f"Shipping notification sent to {shipping.get('address')}")
+
+          # Update inventory
+          for item in items:
+              if not item or not isinstance(item, dict):
+                  continue
+              product_id = item.get('product_id')
+              quantity = item.get('quantity', 0)
+              print(f"Updating inventory: {product_id} -{quantity}")
+
+          # Return order summary
+          return {
+              'order_number': order_number,
+              'customer': customer.get('name'),
+              'subtotal': round(subtotal, 2),
+              'tax': round(tax, 2),
+              'shipping_cost': round(shipping_cost, 2),
+              'discount': round(discount, 2),
+              'total': round(final_total, 2)
+          }
+
+      if __name__ == '__main__':
+          order = {
+              'customer': {
+                  'name': 'John Doe',
+                  'email': 'john@example.com',
+                  'is_premium': True,
+                  'shipping': {
+                      'address': '123 Main St, City, State 12345',
+                      'phone': '555-1234'
+                  }
+              },
+              'items': [
+                  {'product_id': 1, 'name': 'Widget', 'price': 29.99, 'quantity': 2, 'weight': 1.5},
+                  {'product_id': 2, 'name': 'Gadget', 'price': 49.99, 'quantity': 1, 'weight': 2.0}
+              ]
+          }
+
+          result = process_order(order)
+          print("\nOrder Summary:")
+          for key, value in result.items():
+              print(f"  {key}: {value}")

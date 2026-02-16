@@ -1,0 +1,61 @@
+id: bootstrap-012
+title: "Add TypeScript Types to JavaScript Code"
+prompt: |
+  The following JavaScript code has no type annotations. Add TypeScript types
+  to improve code quality, catch errors at compile time, and provide better IDE support.
+
+  The types should:
+  - Define interfaces for all data structures
+  - Add type annotations to all functions
+  - Use proper type guards
+  - Handle optional and nullable values
+  - Use union types where appropriate
+  - Enable strict mode
+
+  Run: npm run build
+
+source: bootstrap
+category: type-safety
+language: typescript
+difficulty: easy
+
+tags:
+  - typescript
+  - types
+  - type-safety
+  - javascript
+
+files:
+  - path: user_manager.ts
+    content: |
+      // JavaScript code without types
+      class UserManager {
+          constructor() {
+              this.users = [];
+          }
+
+          addUser(user) {
+              this.users.push(user);
+          }
+
+          getUser(id) {
+              return this.users.find(u => u.id === id);
+          }
+
+          updateUser(id, updates) {
+              const user = this.users.find(u => u.id === id);
+              if (user) {
+                  Object.assign(user, updates);
+              }
+          }
+
+          deleteUser(id) {
+              this.users = this.users.filter(u => u.id !== id);
+          }
+      }
+
+      const manager = new UserManager();
+      manager.addUser({ id: 1, name: 'Alice', email: 'alice@example.com' });
+      const user = manager.getUser(1);
+      manager.updateUser(1, { name: 'Alice Updated' });
+      manager.deleteUser(1);

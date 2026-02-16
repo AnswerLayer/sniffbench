@@ -1,0 +1,74 @@
+id: bootstrap-009
+title: "Add Input Validation to User-Facing Functions"
+prompt: |
+  The following Node.js API functions accept user input without proper validation.
+  Add comprehensive input validation to ensure data integrity and security.
+
+  The functions should:
+  - Validate email format
+  - Validate password strength
+  - Validate required fields
+  - Validate data types
+  - Return appropriate error messages
+  - Sanitize user input
+
+  Run: node input_validation.test.js
+
+source: bootstrap
+category: security
+language: javascript
+difficulty: medium
+
+tags:
+  - javascript
+  - validation
+  - security
+  - input-validation
+
+files:
+  - path: auth_service.js
+    content: |
+      const crypto = require('crypto');
+
+      // Function to register a new user
+      function registerUser(userData) {
+        const { email, password, name } = userData;
+
+        // TODO: Add proper validation
+        const user = {
+          id: crypto.randomUUID(),
+          email,
+          password,
+          name,
+          createdAt: new Date()
+        };
+
+        return user;
+      }
+
+      // Function to update user profile
+      function updateUserProfile(userId, updates) {
+        const { email, name, bio } = updates;
+
+        // TODO: Add proper validation
+        const user = {
+          id: userId,
+          email,
+          name,
+          bio,
+          updatedAt: new Date()
+        };
+
+        return user;
+      }
+
+      // Function to change password
+      function changePassword(userId, currentPassword, newPassword) {
+        // TODO: Add proper validation
+        return {
+          id: userId,
+          passwordChangedAt: new Date()
+        };
+      }
+
+      module.exports = { registerUser, updateUserProfile, changePassword };

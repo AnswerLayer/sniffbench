@@ -1,0 +1,103 @@
+id: bootstrap-013
+title: "Extract Reusable Components from Duplicated Code"
+prompt: |
+  The following JavaScript code has significant code duplication. Extract common
+  logic into reusable functions or components.
+
+  The refactoring should:
+  - Identify duplicated code patterns
+  - Extract common logic into reusable functions
+  - Maintain the same functionality
+  - Improve code maintainability
+  - Follow DRY (Don't Repeat Yourself) principle
+  - Add proper documentation
+
+  Run: node component_test.js
+
+source: bootstrap
+category: refactoring
+language: javascript
+difficulty: medium
+
+tags:
+  - javascript
+  - refactoring
+  - code-quality
+  - dpry
+
+files:
+  - path: data_processor.js
+    content: |
+      // Duplicated code - same validation logic repeated
+      function validateEmail1(email) {
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (!emailRegex.test(email)) {
+              throw new Error('Invalid email format');
+          }
+          return true;
+      }
+
+      function validateEmail2(email) {
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (!emailRegex.test(email)) {
+              throw new Error('Invalid email format');
+          }
+          return true;
+      }
+
+      function validateEmail3(email) {
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (!emailRegex.test(email)) {
+              throw new Error('Invalid email format');
+          }
+          return true;
+      }
+
+      // Duplicated code - same formatting logic
+      function formatName1(firstName, lastName) {
+          return `${firstName} ${lastName}`.trim();
+      }
+
+      function formatName2(firstName, lastName) {
+          return `${firstName} ${lastName}`.trim();
+      }
+
+      function formatName3(firstName, lastName) {
+          return `${firstName} ${lastName}`.trim();
+      }
+
+      // Duplicated code - same error handling
+      function processUser1(user) {
+          try {
+              validateEmail1(user.email);
+              const formatted = formatName1(user.firstName, user.lastName);
+              return { ...user, formattedName: formatted };
+          } catch (err) {
+              console.error('Error processing user:', err.message);
+              return null;
+          }
+      }
+
+      function processUser2(user) {
+          try {
+              validateEmail2(user.email);
+              const formatted = formatName2(user.firstName, user.lastName);
+              return { ...user, formattedName: formatted };
+          } catch (err) {
+              console.error('Error processing user:', err.message);
+              return null;
+          }
+      }
+
+      function processUser3(user) {
+          try {
+              validateEmail3(user.email);
+              const formatted = formatName3(user.firstName, user.lastName);
+              return { ...user, formattedName: formatted };
+          } catch (err) {
+              console.error('Error processing user:', err.message);
+              return null;
+          }
+      }
+
+      module.exports = { processUser1, processUser2, processUser3 };
