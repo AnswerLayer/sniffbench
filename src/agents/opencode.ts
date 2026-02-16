@@ -16,7 +16,7 @@ import {
 } from './types.js';
 
 // Import SDK client dynamically since it's ESM-only
-let _createOpencodeClient: any;
+let _createOpencodeClient: any; // SDK type not fully defined
 const loadSDK = async () => {
   if (!_createOpencodeClient) {
     const sdkWrapper = await import('./opencode-sdk.mjs');
@@ -34,7 +34,7 @@ let nextPort = 4097;
  */
 async function spawnServer(
   cwd: string,
-  config: Record<string, any>,
+  config: Record<string, unknown>,
   timeoutMs: number,
 ): Promise<{ url: string; proc: ChildProcess }> {
   const port = nextPort++;
@@ -90,9 +90,9 @@ export class OpencodeAgent implements AgentWrapper {
   displayName = 'Opencode';
 
   private cliPath: string;
-  private config: Record<string, any>;
+  private config: Record<string, unknown>;
 
-  constructor(cliPath: string = 'opencode', config?: Record<string, any>) {
+  constructor(cliPath: string = 'opencode', config?: Record<string, unknown>) {
     this.cliPath = cliPath;
     this.config = config || {
       model: 'local-glm/glm-4.7-local-4bit',
@@ -176,9 +176,11 @@ export class OpencodeAgent implements AgentWrapper {
 
       // Subscribe to SSE events BEFORE sending the prompt so we capture everything
       // event.subscribe() returns ServerSentEventsResult directly (not { data, error })
-      const sseResult = await client.event.subscribe({}) as any;
-      const stream: AsyncIterable<any> | undefined =
-        sseResult?.stream || sseResult?.data?.stream || sseResult?.data;
+      const sseResult = await client.event.subscribe({}) as unknown;
+      const stream: AsyncIterable<unknown> | undefined =
+        (sseResult as { stream?: AsyncIterable<unknown>; data?: { stream?: AsyncIterable<unknown> } })?.stream ||
+        (sseResult as { data?: { stream?: AsyncIterable<unknown> } })?.data?.stream ||
+        (sseResult as { data?: AsyncIterable<unknown> })?.data;
 
       if (!stream) {
         throw new Error(
@@ -211,25 +213,26 @@ export class OpencodeAgent implements AgentWrapper {
           break;
         }
 
-        const eventType = event?.type || event?.event;
+        const eventType = (event as { type?: string; event?: string })?.type || (event as { type?: string; event?: string })?.event || '';
 
         if (eventType === 'message.part.updated') {
-          const props = event.properties || event.data;
+          const props = (event as { properties?: unknown; data?: unknown }).properties || (event as { properties?: unknown; data?: unknown }).data || {};
           if (!props) continue;
-          const part = props.part;
+          const part = (props as { part?: unknown }).part || {};
           if (!part) continue;
 
           if (part.type === 'text') {
             // Streaming text delta
-            const delta = props.delta || '';
+            const delta = (props as any).delta || '';
             if (delta) {
               answer += delta;
               options.onEvent?.({ type: 'text_delta', text: delta });
             }
-          } else if (part.type === 'tool') {
-            const status = part.state?.status;
-            const callID = part.callID || part.callId;
-            const toolName = part.tool || 'unknown';
+          } else if ((part as { type?: string }).type === 'tool') {
+            const status = (part as any).state?.status || '';
+            const callID = (part as any).callID || (part as any).callId || '';
+            const toolName = (part as any).tool || 'unknown';
+            if (!toolName) continue;
 
             if (status === 'running' || status === 'pending') {
               // Only add if not already tracked
@@ -237,7 +240,7 @@ export class OpencodeAgent implements AgentWrapper {
                 const toolCall: ToolCall = {
                   id: callID,
                   name: toolName,
-                  input: part.state?.input || {},
+                  input: (part as any).state?.input || {},
                   timestamp: Date.now(),
                 };
                 toolCalls.push(toolCall);
@@ -247,11 +250,11 @@ export class OpencodeAgent implements AgentWrapper {
             } else if (status === 'completed') {
               const existing = toolCalls.find((t) => t.id === callID);
               if (existing) {
-                existing.durationMs = part.state?.time
+                existing.durationMs = (part as any).state?.time
                   ? (part.state.time.end - part.state.time.start) * 1000
                   : Date.now() - existing.timestamp;
                 existing.success = true;
-                existing.result = part.state?.output
+                existing.result = (part as any).state?.output
                   ? String(part.state.output).substring(0, 500)
                   : undefined;
               } else {
@@ -259,13 +262,13 @@ export class OpencodeAgent implements AgentWrapper {
                 toolCalls.push({
                   id: callID,
                   name: toolName,
-                  input: part.state?.input || {},
+                  input: (part as any).state?.input || {},
                   timestamp: Date.now(),
-                  durationMs: part.state?.time
+                  durationMs: (part as any).state?.time
                     ? (part.state.time.end - part.state.time.start) * 1000
                     : 0,
                   success: true,
-                  result: part.state?.output
+                  result: (part as any).state?.output
                     ? String(part.state.output).substring(0, 500)
                     : undefined,
                 });
@@ -289,12 +292,13 @@ export class OpencodeAgent implements AgentWrapper {
                 durationMs: existing?.durationMs || 0,
               });
             }
-          } else if (part.type === 'reasoning') {
-            const text = props.delta || part.text || '';
+          } else if ((part as { type?: string }).type === 'reasoning') {
+            const text = (props as any).delta || (part as any).text || '';
+            if (!text) continue;
             if (text) {
               options.onEvent?.({ type: 'thinking', text });
             }
-          } else if (part.type === 'step-finish') {
+          } else if ((part as { type?: string }).type === 'step-finish') {
             numTurns++;
             // Accumulate per-step tokens/cost
             if (part.tokens) {
@@ -364,7 +368,7 @@ export class OpencodeAgent implements AgentWrapper {
           path: { id: sessionId },
         });
         if (messagesResult.data) {
-          const messages = messagesResult.data as any[];
+          const messages = messagesResult.data as unknown[];
           // Find the last assistant message
           for (let i = messages.length - 1; i >= 0; i--) {
             const msg = messages[i];

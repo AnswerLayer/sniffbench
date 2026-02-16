@@ -289,7 +289,7 @@ export class LLMJudge {
 
     for await (const message of response) {
       if (message.type === 'result' && message.subtype === 'success' && (message as any).result) {
-        const content = (message as any).result || '';
+        const content = (message as any).result as string || '';
         result = this.parseResponse(content);
         break;
       }
