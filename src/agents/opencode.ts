@@ -162,7 +162,7 @@ export class OpencodeAgent implements AgentWrapper {
 
       const createClient = await loadSDK();
       if (!createClient) throw new Error("Failed to load SDK");
-      const client = createClient({ baseUrl: url });
+      const client = createClient();
 
       const createResult = await client.session.create({});
       if (createResult.error) {
@@ -215,15 +215,15 @@ export class OpencodeAgent implements AgentWrapper {
         }
 
         const eventType = (event as { type?: string; event?: string })?.type ?? (event as { type?: string; event?: string })?.event ?? '';
-        const eventAny = event as any;
 
         if (eventType === 'message.part.updated') {
-          const props = (event as { properties?: unknown; data?: unknown }).properties || (event as { properties?: unknown; data?: unknown }).data || {};
+          const eventAny = event as { properties?: unknown; data?: unknown };
+          const props = eventAny.properties || eventAny.data || {};
           if (!props) continue;
           const part = (props as { part?: unknown }).part || ({} as any);
           if (!part) continue;
 
-          const partAny = part as { type?: string; text?: string; state?: { status?: string; input?: unknown; time?: { start?: number; end?: number }; output?: unknown }; callID?: string; callId?: string; tool?: string; tokens?: unknown; cost?: number };
+          const partAny = part as { type?: string; text?: string; state?: { status?: string; input?: unknown; time?: { start?: number; end?: number }; output?: unknown }; callID?: string; callId?: string; tool?: string; tokens?: { input?: number; output?: number; cache?: { read?: number; write?: number }; total?: number }; cost?: number };
           if (partAny.type === 'text') {
             // Streaming text delta
             const delta = (props as any).delta || '';
@@ -243,7 +243,7 @@ export class OpencodeAgent implements AgentWrapper {
                 const toolCall: ToolCall = {
                   id: callID,
                   name: toolName,
-                  input: partAny.state?.input || {},
+                  input: (partAny.state?.input || {}) as Record<string, unknown>,
                   timestamp: Date.now(),
                 };
                 toolCalls.push(toolCall);
@@ -253,7 +253,7 @@ export class OpencodeAgent implements AgentWrapper {
             } else if (status === 'completed') {
               const existing = toolCalls.find((t) => t.id === callID);
               if (existing) {
-                existing.durationMs = partAny.state?.time
+                existing.durationMs = partAny.state?.time?.end && partAny.state.time?.start
                   ? (partAny.state.time.end - partAny.state.time.start) * 1000
                   : Date.now() - existing.timestamp;
                 existing.success = true;
@@ -265,9 +265,9 @@ export class OpencodeAgent implements AgentWrapper {
                 toolCalls.push({
                   id: callID,
                   name: toolName,
-                  input: partAny.state?.input || {},
+                  input: (partAny.state?.input || {}) as Record<string, unknown>,
                   timestamp: Date.now(),
-                  durationMs: partAny.state?.time
+                  durationMs: partAny.state?.time?.end && partAny.state.time?.start
                     ? (partAny.state.time.end - partAny.state.time.start) * 1000
                     : 0,
                   success: true,
@@ -318,8 +318,9 @@ export class OpencodeAgent implements AgentWrapper {
           }
         } else if (eventType === 'message.updated') {
           // A full message update — extract final info from here
-          const props = event.properties || event.data;
-          const info = props?.info as { providerID?: string; modelID?: string; tokens?: unknown; cost?: number } | undefined;
+          const eventAny = event as { properties?: unknown; data?: unknown };
+          const props = eventAny.properties || eventAny.data;
+          const info = props as { providerID?: string; modelID?: string; tokens?: { input?: number; output?: number; cache?: { read?: number; write?: number }; total?: number }; cost?: number } | undefined;
           if (info?.providerID && info?.modelID) {
             model = `${info.providerID}/${info.modelID}`;
           }
@@ -337,16 +338,16 @@ export class OpencodeAgent implements AgentWrapper {
             totalCost = info.cost;
           }
           // Extract final answer text from message parts if we haven't captured it via deltas
-          if (props?.parts && !answer) {
-            for (const p of props.parts) {
-              if (p.type === 'text' && p.text) {
-                answer += p.text;
+          if (props && (props as { parts?: unknown[] }).parts) {
+            for (const p of msg.parts || []) {              if ((p as { type?: string; text?: string }).type === 'text' && (p as { type?: string; text?: string }).text) {
+                answer += (p as { type?: string; text?: string }).text;
               }
             }
           }
         } else if (eventType === 'session.status') {
-          const props = event.properties || event.data;
-          const status = props?.status as { type?: string; attempt?: number; message?: string } | undefined;
+          const eventAny = event as { properties?: unknown; data?: unknown };
+          const props = eventAny.properties || eventAny.data;
+          const status = props as { type?: string; attempt?: number; message?: string } | undefined;
           if (status?.type === 'idle') {
             // Agent finished processing
             options.onEvent?.({ type: 'status', message: 'Session idle — agent finished' });
@@ -360,8 +361,9 @@ export class OpencodeAgent implements AgentWrapper {
             });
           }
         } else if (eventType === 'session.error') {
-          const props = event.properties || event.data;
-          const errMsg = (props?.error as { message?: string } | undefined)?.message || JSON.stringify(props?.error) || 'Unknown error';
+          const eventAny = event as { properties?: unknown; data?: unknown };
+          const props = eventAny.properties || eventAny.data;
+          const errMsg = (props as { error?: { message?: string } | undefined })?.error?.message || JSON.stringify(props) || 'Unknown error';
           options.onEvent?.({ type: 'error', message: errMsg, code: 'SESSION_ERROR' });
         }
       }
@@ -376,10 +378,10 @@ export class OpencodeAgent implements AgentWrapper {
           // Find the last assistant message
           for (let i = messages.length - 1; i >= 0; i--) {
             const msg = messages[i] as { role?: string; parts?: unknown[] };
-            if ((msg as any).role === 'assistant' && (msg as any).parts) {
+            if ((msg as any).role === 'assistant' && msg.parts) {
               for (const p of msg.parts) {
-                if (p.type === 'text' && p.text) {
-                  answer += p.text;
+                if ((p as { type?: string; text?: string }).type === 'text' && (p as { type?: string; text?: string }).text) {
+                  answer += (p as { type?: string; text?: string }).text;
                 }
               }
               break;
