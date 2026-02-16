@@ -321,7 +321,7 @@ async function evaluateWithRubric(
     const evaluatorResults: EvaluatorResult[] = [];
     let criterionScore = 0;
     let evaluatorCount = 0;
-    let evalStartTime = Date.now();
+    const evalStartTime = Date.now();
 
     for (const evaluator of criterion.evaluators) {
       let evalResult: Omit<EvaluatorResult, 'name' | 'type' | 'durationMs'>;
@@ -376,7 +376,7 @@ async function evaluateWithRubric(
           evidence: result.evidence,
           details: result.details,
         };
-      } else if ((evaluator.type as any) === 'llm_judge_comparison') {
+      } else if (evaluator.type === 'llm_judge_comparison') {
         // Run LLM judge comparison evaluator
         // TODO: Implement baseline answer storage and comparison
         // For now, use a placeholder evaluator

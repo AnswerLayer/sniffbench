@@ -163,10 +163,10 @@ export class LLMJudge {
     criteria: string,
     answer: string,
     context?: string
-  ): Promise<unknown> {
+  ): Promise<LLMJudgeScore | null> {
     const cacheKey = this.generateCacheKey('quality', criteria, answer, context || '');
     if (this.enableCache && this.cache.has(cacheKey)) {
-      return this.cache.get(cacheKey)!;
+      return this.cache.get(cacheKey) as LLMJudgeScore | null;
     }
 
     const prompt = PROMPTS.quality(criteria, answer, context);
@@ -217,10 +217,10 @@ export class LLMJudge {
     answer: string,
     baseline: string,
     context?: string
-  ): Promise<unknown> {
+  ): Promise<LLMJudgeScore | null> {
     const cacheKey = this.generateCacheKey('baseline', criteria, answer, baseline, context || '');
     if (this.enableCache && this.cache.has(cacheKey)) {
-      return this.cache.get(cacheKey)!;
+      return this.cache.get(cacheKey) as LLMJudgeScore | null;
     }
 
     const prompt = PROMPTS.baseline(criteria, answer, baseline, context);
