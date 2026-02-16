@@ -16,7 +16,7 @@ import {
 } from './types.js';
 
 // Import SDK client dynamically since it's ESM-only
-let _createOpencodeClient: (() => any) | undefined; 
+let _createOpencodeClient: unknown; 
 const loadSDK = async () => {
   if (!_createOpencodeClient) {
     const sdkWrapper = await import('./opencode-sdk.mjs');
@@ -59,7 +59,7 @@ async function spawnServer(
         if (line.startsWith('opencode server listening')) {
           const match = line.match(/on\s+(https?:\/\/[^\s]+)/);
           if (match) {
-            clearTimeout(id);
+            clearTimeout(_id);
             resolve(match[1]);
             return;
           }
@@ -70,11 +70,11 @@ async function spawnServer(
       output += chunk.toString();
     });
     proc.on('exit', (code) => {
-      clearTimeout(id);
+      clearTimeout(_id);
       reject(new Error(`Server exited with code ${code}: ${output}`));
     });
     proc.on('error', (err) => {
-      clearTimeout(id);
+      clearTimeout(_id);
       reject(err);
     });
   });
@@ -162,7 +162,7 @@ export class OpencodeAgent implements AgentWrapper {
 
       const createClient = await loadSDK();
       if (!createClient) throw new Error("Failed to load SDK");
-      const client = createClient() as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+      const client = (createClient as () => any)(); // eslint-disable-line @typescript-eslint/no-explicit-any
 
       const createResult = await client.session.create({});
       if (createResult.error) {
