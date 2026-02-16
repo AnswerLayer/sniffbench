@@ -193,7 +193,7 @@ export class LLMJudge {
     answer1: string,
     answer2: string,
     context?: string
-  ): Promise<ComparisonResult> {
+  ): Promise<ComparisonResult | null> {
     const cacheKey = this.generateCacheKey('comparison', criteria, answer1, answer2, context || '');
     if (this.enableCache && this.cache.has(cacheKey)) {
       const cached = this.cache.get(cacheKey);
@@ -210,7 +210,7 @@ export class LLMJudge {
     }
 
     if (!result) {
-      throw new Error('Failed to get comparison result');
+      return null;
     }
     return result as ComparisonResult;
   }
@@ -438,6 +438,10 @@ export async function runLLMJudgeEvaluator(
         throw new Error('Unknown evaluation type: ' + evaluator.evaluate);
     }
 
+    if (!score) {
+      throw new Error('LLM judge evaluation failed to produce a score');
+    }
+
     const durationMs = Date.now() - startTime;
 
     return {
@@ -498,6 +502,10 @@ export async function runLLMJudgeComparisonEvaluator(
       answer2,
       context || undefined
     );
+
+    if (!comparison) {
+      throw new Error('LLM judge comparison failed to produce a result');
+    }
 
     const durationMs = Date.now() - startTime;
 
