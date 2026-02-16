@@ -163,7 +163,7 @@ export class LLMJudge {
     criteria: string,
     answer: string,
     context?: string
-  ): Promise<LLMJudgeScore | ComparisonResult> {
+  ): Promise<LLMJudgeScore> {
     const cacheKey = this.generateCacheKey('quality', criteria, answer, context || '');
     if (this.enableCache && this.cache.has(cacheKey)) {
       return this.cache.get(cacheKey)!;
@@ -173,10 +173,10 @@ export class LLMJudge {
     const result = await this.callClaude(prompt);
 
     if (this.enableCache) {
-      this.cache.set(cacheKey, result as ComparisonResult);
+      this.cache.set(cacheKey, result);
     }
 
-    return result;
+    return result as LLMJudgeScore;
   }
 
   /**
@@ -197,18 +197,13 @@ export class LLMJudge {
     const result = await this.callClaude(prompt);
 
     if (this.enableCache) {
-      this.cache.set(cacheKey, result as ComparisonResult);
+      this.cache.set(cacheKey, result);
     }
 
     if (!result) {
       throw new Error('Failed to get comparison result');
     }
-    return {
-      winner: result.winner,
-      score1: result.score1,
-      score2: result.score2,
-      reasoning: result.reasoning || ''
-    };
+    return result as ComparisonResult;
   }
 
   /**
@@ -229,10 +224,10 @@ export class LLMJudge {
     const result = await this.callClaude(prompt);
 
     if (this.enableCache) {
-      this.cache.set(cacheKey, result as ComparisonResult);
+      this.cache.set(cacheKey, result);
     }
 
-    return result;
+    return result as LLMJudgeScore;
   }
 
   /**
@@ -343,7 +338,6 @@ export class LLMJudge {
     type: string,
     ...args: string[]
   ): string {
-  ): Promise<LLMJudgeScore | ComparisonResult> {
     const str = args.filter((arg): arg is string => arg !== undefined).join('|||');
     return type + ':' + this.model + ':' + str.substring(0, 200);
   }

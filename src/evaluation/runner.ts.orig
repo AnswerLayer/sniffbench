@@ -1,0 +1,566 @@
+/**
+ * Evaluation runner - executes cases in sandboxes and evaluates results
+ *
+ * This is the core evaluation engine that:
+ * 1. Sets up the sandbox environment
+ * 2. Runs the case (agent attempts to solve the problem)
+ * 3. Applies the rubric to evaluate the result
+ */
+
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+import {
+  Case,
+  CaseFile,
+  CaseResult,
+  CriterionResult,
+  EvaluatorResult,
+  RunResult,
+  RunSummary,
+  EvaluatorType,
+} from '../cases/types';
+import { createSandboxManager, checkDocker, RECOMMENDED_IMAGES } from '../sandbox';
+import { Sandbox, SandboxConfig } from '../sandbox/types';
+import { getRubricRegistry } from '../rubrics/loader';
+import { getAgent } from '../agents/registry';
+import { runLLMJudgeEvaluator } from './llm-judge';
+import type { AgentResult } from '../agents/types';
+
+export interface RunnerOptions {
+  /** Agent being evaluated (for logging) */
+  agent: string;
+
+  /** Model to use (passed to agent) */
+  model?: string;
+
+  /** Timeout per case in seconds */
+  timeoutSeconds?: number;
+
+  /** Enable network in sandbox */
+  networkEnabled?: boolean;
+
+  /** Callback for progress updates */
+  onProgress?: (update: ProgressUpdate) => void;
+
+  /** Callback when a case completes */
+  onCaseComplete?: (result: CaseResult) => void;
+}
+
+export interface ProgressUpdate {
+  type: 'starting' | 'running' | 'validating' | 'complete' | 'error';
+  caseId: string;
+  caseIndex: number;
+  totalCases: number;
+  message?: string;
+}
+
+/**
+ * Get the appropriate Docker image for a language
+ */
+function getImageForLanguage(language: string): string {
+  const langLower = language.toLowerCase();
+
+  if (langLower === 'javascript' || langLower === 'typescript' || langLower === 'node') {
+    return RECOMMENDED_IMAGES.node.latest;
+  }
+  if (langLower === 'python') {
+    return RECOMMENDED_IMAGES.python.latest;
+  }
+  if (langLower === 'go' || langLower === 'golang') {
+    return RECOMMENDED_IMAGES.go.latest;
+  }
+  if (langLower === 'rust') {
+    return RECOMMENDED_IMAGES.rust.latest;
+  }
+  if (langLower === 'java') {
+    return RECOMMENDED_IMAGES.java.latest;
+  }
+
+  // Default to Node.js for unknown languages
+  return RECOMMENDED_IMAGES.node.latest;
+}
+
+/**
+ * Run a set of cases and return results
+ */
+export async function runCases(cases: Case[], options: RunnerOptions): Promise<RunResult> {
+  const runId = `run-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+  const startedAt = new Date();
+  const results: CaseResult[] = [];
+
+  // Check Docker availability first
+  const dockerStatus = await checkDocker();
+  if (!dockerStatus.available) {
+    throw new Error(`Docker is not available: ${dockerStatus.error}\n${dockerStatus.suggestion}`);
+  }
+
+  const manager = createSandboxManager();
+  let rubricId = 'default';
+
+  try {
+    for (let i = 0; i < cases.length; i++) {
+      const caseData = cases[i];
+
+      options.onProgress?.({
+        type: 'starting',
+        caseId: caseData.id,
+        caseIndex: i,
+        totalCases: cases.length,
+        message: `Starting ${caseData.title}`,
+      });
+
+      try {
+        const result = await runSingleCase(caseData, manager, options, i, cases.length);
+        results.push(result);
+        options.onCaseComplete?.(result);
+        // Track the rubric ID from the first case
+        if (i === 0) {
+          const registry = getRubricRegistry();
+          const rubric = registry.resolve(caseData.rubric);
+          rubricId = rubric.id;
+        }
+      } catch (err) {
+        const errorResult: CaseResult = {
+          id: caseData.id,
+          title: caseData.title,
+          score: 0,
+          passed: false,
+          evidence: (err as Error).message,
+          criteria: [],
+          evaluators: [],
+          durationMs: 0,
+          error: (err as Error).message,
+          timestamp: new Date(),
+        };
+        results.push(errorResult);
+        options.onCaseComplete?.(errorResult);
+      }
+    }
+  } finally {
+    // Clean up all sandboxes
+    await manager.destroyAll();
+  }
+
+  const completedAt = new Date();
+  const totalDurationMs = completedAt.getTime() - startedAt.getTime();
+
+  // Calculate summary
+  const scores = results.map((r) => r.score);
+  const averageScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+
+  const summary: RunSummary = {
+    total: results.length,
+    passed: results.filter((r) => r.passed).length,
+    failed: results.filter((r) => !r.passed && !r.error).length,
+    skipped: 0,
+    timedOut: results.filter((r) => r.timedOut).length,
+    averageScore,
+    totalDurationMs,
+  };
+
+  return {
+    id: runId,
+    timestamp: startedAt,
+    cases: results,
+    summary,
+    durationMs: totalDurationMs,
+    agent: options.agent,
+    rubricId,
+  };
+}
+
+/**
+ * Run a single case in a sandbox
+ */
+async function runSingleCase(
+  caseData: Case,
+  manager: ReturnType<typeof createSandboxManager>,
+  options: RunnerOptions,
+  caseIndex: number,
+  totalCases: number
+): Promise<CaseResult> {
+  const startTime = Date.now();
+
+  // Create a temporary directory for this case
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `sniff-${caseData.id}-`));
+
+  try {
+    // Write case files to temp directory (if any)
+    if (caseData.files) {
+      for (const file of caseData.files) {
+        const filePath = path.join(tempDir, file.path);
+        const fileDir = path.dirname(filePath);
+
+        // Create directories if needed
+        fs.mkdirSync(fileDir, { recursive: true });
+        if (file.content !== undefined) {
+          fs.writeFileSync(filePath, file.content);
+        }
+      }
+    }
+
+    // Create sandbox
+    const sandboxConfig: SandboxConfig = {
+      workdir: tempDir,
+      image: getImageForLanguage(caseData.language),
+      timeoutSeconds: options.timeoutSeconds || 300,
+      networkEnabled: options.networkEnabled || false,
+    };
+
+    options.onProgress?.({
+      type: 'running',
+      caseId: caseData.id,
+      caseIndex,
+      totalCases,
+      message: 'Creating sandbox...',
+    });
+
+    const sandbox = await manager.create(sandboxConfig);
+
+    try {
+      // Install dependencies if needed
+      await installDependencies(sandbox, caseData.language, options, caseIndex, totalCases, caseData.id);
+
+      // Run the agent to attempt to solve the case
+      options.onProgress?.({
+        type: 'running',
+        caseId: caseData.id,
+        caseIndex,
+        totalCases,
+        message: 'Running agent...',
+      });
+
+      const agent = getAgent(options.agent);
+      const agentResult: AgentResult = await agent.run(caseData.prompt, {
+        cwd: tempDir,
+        model: options.model,
+        timeoutMs: (options.timeoutSeconds || 300) * 1000,
+        permissionMode: 'acceptEdits',
+      });
+
+      if (!agentResult.success) {
+        throw new Error(`Agent execution failed: ${agentResult.error}`);
+      }
+
+      // Snapshot files the agent produced (before rubric evaluation)
+      const agentFiles = snapshotFiles(tempDir, caseData.files);
+
+      // Evaluate using the rubric
+      options.onProgress?.({
+        type: 'validating',
+        caseId: caseData.id,
+        caseIndex,
+        totalCases,
+        message: 'Evaluating with rubric...',
+      });
+
+      const result = await evaluateWithRubric(caseData, sandbox, options, agentResult, agentFiles);
+      const durationMs = Date.now() - startTime;
+
+      options.onProgress?.({
+        type: 'complete',
+        caseId: caseData.id,
+        caseIndex,
+        totalCases,
+        message: result.passed ? `Passed (${Math.round(result.score)}%)` : `Failed (${Math.round(result.score)}%)`,
+      });
+
+      return {
+        ...result,
+        agentResponse: agentResult.answer,
+        agentToolCalls: agentResult.toolCalls.map((t) => ({
+          name: t.name,
+          durationMs: t.durationMs || 0,
+          success: t.success || false,
+        })),
+        agentModel: agentResult.model,
+        agentTokens: agentResult.tokens
+          ? {
+              input: agentResult.tokens.inputTokens,
+              output: agentResult.tokens.outputTokens,
+              total: agentResult.tokens.totalTokens,
+            }
+          : undefined,
+        agentFiles,
+        durationMs,
+        timestamp: new Date(),
+      };
+    } finally {
+      await sandbox.destroy();
+    }
+  } finally {
+    // Clean up temp directory
+    try {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    } catch {
+      // Ignore cleanup errors
+    }
+  }
+}
+
+/**
+ * Evaluate a case using its rubric
+ */
+async function evaluateWithRubric(
+  caseData: Case,
+  sandbox: Sandbox,
+  _options: RunnerOptions,
+  agentResult: AgentResult,
+  agentFiles: { path: string; content: string; changed: boolean }[]
+): Promise<CaseResult> {
+  const registry = getRubricRegistry();
+  const rubric = registry.resolve(caseData.rubric);
+
+  const criteriaResults: CriterionResult[] = [];
+  let totalWeightedScore = 0;
+  let _totalWeight = 0;
+
+  // Evaluate each criterion in the rubric
+  for (const [criterionKey, criterion] of Object.entries(rubric.criteria)) {
+    const evaluatorResults: EvaluatorResult[] = [];
+    let criterionScore = 0;
+    let evaluatorCount = 0;
+
+    for (const evaluator of criterion.evaluators) {
+      const evalStartTime = Date.now();
+      let evalResult: Omit<EvaluatorResult, 'name' | 'type' | 'durationMs'>;
+
+      if (evaluator.type === 'command') {
+        // Run command evaluator
+        const result = await sandbox.exec(evaluator.run, {
+          timeoutSeconds: 60,
+        });
+
+        const passed = result.exitCode === 0;
+        let score = passed ? 1.0 : 0.0;
+
+        // Handle partial credit
+        if (evaluator.partialCredit && !passed) {
+          // For test runners, try to parse pass/fail ratio
+          const testMatch = result.stdout.match(/(\d+) passed/);
+          const failMatch = result.stdout.match(/(\d+) failed/);
+          if (testMatch && failMatch) {
+            const passedTests = parseInt(testMatch[1], 10);
+            const failedTests = parseInt(failMatch[1], 10);
+            const total = passedTests + failedTests;
+            if (total > 0) {
+              score = passedTests / total;
+            }
+          }
+        }
+
+        evalResult = {
+          passed,
+          score,
+          evidence: (result.stdout + '\n' + result.stderr).trim(),
+          details: {
+            exitCode: result.exitCode,
+            timedOut: result.timedOut,
+          },
+        };
+      } else if (evaluator.type === 'pattern') {
+        // Run pattern evaluator (check for matches in files)
+        // Default to fail until fully implemented
+        evalResult = {
+          passed: false,
+          score: 0.0,
+          evidence: 'Pattern check not yet implemented',
+        };
+      } else if (evaluator.type === 'llm_judge') {
+        // Run LLM judge evaluator
+        const result = await runLLMJudgeEvaluator(evaluator, agentResult.answer, JSON.stringify(agentFiles));
+        evalResult = {
+          passed: result.passed,
+          score: result.score,
+          evidence: result.evidence,
+          details: result.details,
+        };
+      } else if ((evaluator.type as any) === 'llm_judge_comparison') {
+        // Run LLM judge comparison evaluator
+        // TODO: Implement baseline answer storage and comparison
+        // For now, use a placeholder evaluator
+        evalResult = {
+          passed: false,
+          score: 0.0,
+          evidence: 'LLM judge comparison not yet fully implemented',
+        };
+      } else {
+        // Other evaluator types (llm_judge, benchmark, etc.) - not implemented
+        evalResult = {
+          passed: false,
+          score: 0.0,
+          evidence: `Evaluator type '${evaluator.type}' not yet implemented`,
+        };
+      }
+
+      const evalDurationMs = Date.now() - evalStartTime;
+
+      evaluatorResults.push({
+        name: evaluator.name || evaluator.type,
+        type: evaluator.type as EvaluatorType,
+        durationMs: evalDurationMs,
+        ...evalResult,
+      });
+
+      if (!evaluator.optional) {
+        criterionScore += evalResult.score;
+        evaluatorCount++;
+      }
+    }
+
+    // Average score for this criterion
+    // If no non-optional evaluators ran, this criterion doesn't participate in scoring
+    const hasRequiredEvaluators = evaluatorCount > 0;
+    const rawScore = hasRequiredEvaluators ? criterionScore / evaluatorCount : 0.0;
+    const weightedScore = hasRequiredEvaluators ? (rawScore * criterion.weight) / 100 : 0;
+    const allPassed = evaluatorResults.filter((e) => !e.passed).length === 0;
+
+    criteriaResults.push({
+      name: criterionKey,
+      weight: criterion.weight,
+      score: rawScore,
+      passed: allPassed,
+      evidence: `Criterion: ${criterionKey}`,
+      evaluatorResults,
+      durationMs: evalDurationMs,
+    });
+
+    totalWeightedScore += weightedScore;
+    // Only count weight for criteria that had non-optional evaluators
+    if (hasRequiredEvaluators) {
+      _totalWeight += criterion.weight;
+    }
+  }
+
+  // Normalize score by participating weight (criteria with only optional evaluators are excluded)
+  // Each criterion's weightedScore = rawScore * weight / 100, so totalWeightedScore
+  // is a fraction of 1.0 when all weights sum to 100. When some criteria are excluded,
+  // rescale so the participating criteria fill the full 0-100% range.
+  const participatingFraction = _totalWeight / 100;
+  const overallScore = participatingFraction > 0 ? (totalWeightedScore / participatingFraction) * 100 : 0;
+
+  // Determine pass/fail (default threshold: 70%)
+  const passThreshold = 70;
+  const passed = overallScore >= passThreshold;
+
+  return {
+    id: caseData.id,
+    title: caseData.title,
+    score: overallScore,
+    passed,
+    evidence: `Overall score: ${overallScore.toFixed(2)}%`,
+    criteria: criteriaResults,
+    evaluators: [],
+    durationMs: Date.now() - evalStartTime,
+    timestamp: new Date(),
+  };
+}
+
+/**
+ * Install dependencies based on language
+ */
+async function installDependencies(
+  sandbox: Sandbox,
+  language: string,
+  options: RunnerOptions,
+  caseIndex: number,
+  totalCases: number,
+  caseId: string
+): Promise<void> {
+  const langLower = language.toLowerCase();
+
+  options.onProgress?.({
+    type: 'running',
+    caseId,
+    caseIndex,
+    totalCases,
+    message: 'Installing dependencies...',
+  });
+
+  if (langLower === 'python') {
+    // Check for requirements.txt
+    const result = await sandbox.exec('test -f requirements.txt && pip install -r requirements.txt || true');
+    if (result.exitCode !== 0 && result.stderr) {
+      console.warn('Warning: pip install failed:', result.stderr);
+    }
+    // Also install pytest if running tests
+    await sandbox.exec('pip install pytest --quiet 2>/dev/null || true');
+  } else if (langLower === 'javascript' || langLower === 'typescript' || langLower === 'node') {
+    // Check for package.json
+    const result = await sandbox.exec('test -f package.json && npm install --silent || true');
+    if (result.exitCode !== 0 && result.stderr) {
+      console.warn('Warning: npm install failed:', result.stderr);
+    }
+  } else if (langLower === 'go' || langLower === 'golang') {
+    // Check for go.mod
+    await sandbox.exec('test -f go.mod && go mod download || true');
+  }
+}
+
+/**
+ * Snapshot all files in the workspace after the agent runs.
+ * Compares against the original case files to flag which ones changed.
+ * Reads directly from the host tempDir (bind-mounted into the sandbox).
+ */
+function snapshotFiles(
+  tempDir: string,
+  originalFiles?: CaseFile[]
+): { path: string; content: string; changed: boolean }[] {
+  const results: { path: string; content: string; changed: boolean }[] = [];
+  const origMap = new Map<string, string>();
+
+  // Build map of original file contents for comparison
+  if (originalFiles) {
+    for (const f of originalFiles) {
+      if (f.content !== undefined) {
+        origMap.set(f.path, f.content);
+      }
+    }
+  }
+
+  // Walk the temp directory and collect all files
+  function walk(dir: string, prefix: string) {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const relPath = prefix ? `${prefix}/${entry.name}` : entry.name;
+      const fullPath = path.join(dir, entry.name);
+
+      // Skip common non-essential directories
+      if (entry.isDirectory()) {
+        if (['node_modules', '.git', '__pycache__', '.pytest_cache', 'venv', '.venv'].includes(entry.name)) {
+          continue;
+        }
+        walk(fullPath, relPath);
+        continue;
+      }
+
+      if (!entry.isFile()) continue;
+
+      // Skip binary and large files
+      try {
+        const stat = fs.statSync(fullPath);
+        if (stat.size > 100_000) continue; // Skip files over 100KB
+      } catch {
+        continue;
+      }
+
+      try {
+        const content = fs.readFileSync(fullPath, 'utf-8');
+        const original = origMap.get(relPath);
+        const changed = original === undefined || original !== content;
+        results.push({ path: relPath, content, changed });
+      } catch {
+        // Skip files that can't be read as UTF-8
+      }
+    }
+  }
+
+  walk(tempDir, '');
+  return results;
+}
