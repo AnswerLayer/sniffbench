@@ -1,0 +1,64 @@
+id: bootstrap-008
+title: "Add Error Handling to Functions"
+prompt: |
+  The following functions lack proper error handling. Add try-catch blocks
+  to handle potential errors gracefully. The functions should:
+  - Catch common exceptions (ValueError, TypeError, IOError)
+  - Return meaningful error messages
+  - Log errors appropriately
+  - Not crash the application
+
+  Run: python error_handling.test.py
+  Make all tests pass.
+
+source: bootstrap
+category: error-handling
+language: python
+difficulty: easy
+
+tags:
+  - python
+  - error-handling
+  - exception-handling
+
+files:
+  - path: error_handling.py
+    content: |
+      def divide_numbers(a, b):
+          """Divide two numbers."""
+          return a / b
+
+      def read_file(filepath):
+          """Read content from a file."""
+          with open(filepath, 'r') as f:
+              return f.read()
+
+      def process_data(data):
+          """Process some data."""
+          return data.upper()
+
+  - path: error_handling.test.py
+    content: |
+      import unittest
+      from error_handling import divide_numbers, read_file, process_data
+
+      class TestErrorHandling(unittest.TestCase):
+
+          def test_divide_by_zero(self):
+              with self.assertRaises(ZeroDivisionError):
+                  divide_numbers(10, 0)
+
+          def test_invalid_division(self):
+              with self.assertRaises(TypeError):
+                  divide_numbers("10", 2)
+
+          def test_file_not_found(self):
+              with self.assertRaises(FileNotFoundError):
+                  read_file("nonexistent.txt")
+
+          def test_invalid_data(self):
+              with self.assertRaises(AttributeError):
+                  process_data(None)
+
+      if __name__ == '__main__':
+          unittest.main()

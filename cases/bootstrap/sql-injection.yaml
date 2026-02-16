@@ -1,0 +1,66 @@
+id: bootstrap-009
+title: "Fix SQL Injection Vulnerability"
+prompt: |
+  The following function has a SQL injection vulnerability. Fix it by:
+  - Using parameterized queries (prepared statements)
+  - Never concatenating user input directly into SQL strings
+  - Ensuring all database operations are safe
+
+  Run: python sql_injection.test.py
+  Make all tests pass.
+
+source: bootstrap
+category: security
+language: python
+difficulty: medium
+
+tags:
+  - python
+  - security
+  - sql-injection
+  - database
+
+files:
+  - path: sql_injection.py
+    content: |
+      import sqlite3
+
+      def get_user_by_username(username):
+          """Get user by username - vulnerable to SQL injection."""
+          conn = sqlite3.connect(':memory:')
+          cursor = conn.cursor()
+          
+          # VULNERABLE: Direct string concatenation
+          query = f"SELECT * FROM users WHERE username = '{username}'"
+          cursor.execute(query)
+          return cursor.fetchone()
+
+      def search_users(query):
+          """Search users by query - vulnerable to SQL injection."""
+          conn = sqlite3.connect(':memory:')
+          cursor = conn.cursor()
+          
+          # VULNERABLE: Direct string concatenation
+          query_str = f"SELECT * FROM users WHERE name LIKE '%{query}%'"
+          cursor.execute(query_str)
+          return cursor.fetchall()
+
+  - path: sql_injection.test.py
+    content: |
+      import unittest
+      from sql_injection import get_user_by_username, search_users
+
+      class TestSQLInjection(unittest.TestCase):
+
+          def test_vulnerable_query(self):
+              # This should fail with the vulnerable code
+              result = get_user_by_username("admin' OR '1'='1")
+              self.assertIsNotNone(result)
+
+          def test_vulnerable_search(self):
+              # This should fail with the vulnerable code
+              result = search_users("admin' --")
+              self.assertGreater(len(result), 0)
+
+      if __name__ == '__main__':
+          unittest.main()

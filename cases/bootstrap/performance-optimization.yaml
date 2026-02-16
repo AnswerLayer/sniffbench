@@ -1,0 +1,67 @@
+id: bootstrap-011
+title: "Optimize Performance Bottlenecks"
+prompt: |
+  The following code has performance issues. Optimize it by:
+  - Identifying and fixing N+1 query problems
+  - Reducing redundant computations
+  - Using more efficient algorithms
+  - Adding appropriate caching where beneficial
+
+  Run: python performance_optimization.test.py
+  Make all tests pass.
+
+source: bootstrap
+category: performance
+language: python
+difficulty: medium
+
+tags:
+  - python
+  - performance
+  - optimization
+  - database
+
+files:
+  - path: performance_optimization.py
+    content: |
+      def get_user_orders(user_id):
+          """Get all orders for a user - N+1 problem."""
+          orders = []
+          # Get user
+          user = get_user(user_id)
+          if not user:
+              return orders
+          
+          # Get orders (N queries)
+          order_ids = get_order_ids_by_user(user_id)
+          for order_id in order_ids:
+              order = get_order(order_id)  # N+1 problem
+              orders.append(order)
+          return orders
+
+      def get_user(user_id):
+          """Get user by ID."""
+          return {"id": user_id, "name": "Test User"}
+
+      def get_order_ids_by_user(user_id):
+          """Get order IDs for a user."""
+          return [1, 2, 3]
+
+      def get_order(order_id):
+          """Get order by ID."""
+          return {"id": order_id, "total": 100}
+
+  - path: performance_optimization.test.py
+    content: |
+      import unittest
+      from performance_optimization import get_user_orders
+
+      class TestPerformanceOptimization(unittest.TestCase):
+
+          def test_get_user_orders(self):
+              orders = get_user_orders(1)
+              self.assertEqual(len(orders), 3)
+              self.assertEqual(orders[0]["total"], 100)
+
+      if __name__ == '__main__':
+          unittest.main()

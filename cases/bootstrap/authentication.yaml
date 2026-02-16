@@ -1,0 +1,66 @@
+id: bootstrap-019
+title: "Implement Proper Authentication Checks"
+prompt: |
+  The following code lacks proper authentication. Add authentication by:
+  - Implementing proper authentication checks
+  - Using secure password storage (hashing, not plain text)
+  - Adding role-based access control
+  - Ensuring sensitive operations are protected
+
+  Run: python authentication.test.py
+  Make all tests pass.
+
+source: bootstrap
+category: security
+language: python
+difficulty: medium
+
+tags:
+  - python
+  - security
+  - authentication
+  - authorization
+
+files:
+  - path: authentication.py
+    content: |
+      def get_user(username, password):
+          """Get user by credentials - no authentication."""
+          if username == "admin" and password == "password":
+              return {"username": "admin", "role": "admin"}
+          return None
+
+      def delete_user(user_id):
+          """Delete user - no authentication."""
+          # Delete user from database
+          return True
+
+      def get_admin_data():
+          """Get admin data - no authentication."""
+          return {"sensitive": "data"}
+  - path: authentication.test.py
+    content: |
+      import unittest
+      from authentication import get_user, delete_user, get_admin_data
+
+      class TestAuthentication(unittest.TestCase):
+
+          def test_get_user_success(self):
+              user = get_user("admin", "password")
+              self.assertIsNotNone(user)
+              self.assertEqual(user["role"], "admin")
+
+          def test_get_user_failure(self):
+              user = get_user("admin", "wrong")
+              self.assertIsNone(user)
+
+          def test_delete_user(self):
+              result = delete_user(1)
+              self.assertTrue(result)
+
+          def test_get_admin_data(self):
+              data = get_admin_data()
+              self.assertEqual(data["sensitive"], "data")
+
+      if __name__ == '__main__':
+          unittest.main()

@@ -1,0 +1,79 @@
+id: bootstrap-015
+title: "Fix Race Conditions in Concurrent Code"
+prompt: |
+  The following code has a race condition. Fix it by:
+  - Using proper synchronization mechanisms (locks, semaphores)
+  - Ensuring thread-safe operations
+  - Preventing data corruption in concurrent access
+  - Testing with concurrent access patterns
+
+  Run: python race_condition.test.py
+  Make all tests pass.
+
+source: bootstrap
+category: concurrency
+language: python
+difficulty: hard
+
+tags:
+  - python
+  - concurrency
+  - race-condition
+  - threading
+
+files:
+  - path: race_condition.py
+    content: |
+      import threading
+
+      class Counter:
+          def __init__(self):
+              self.count = 0
+              self.lock = threading.Lock()
+
+          def increment(self):
+              """Increment counter - has race condition."""
+              self.count += 1
+
+          def get_count(self):
+              """Get current count."""
+              return self.count
+
+      def process_data(data):
+          """Process data - has race condition."""
+          result = []
+          for item in data:
+              result.append(item * 2)
+          return result
+
+  - path: race_condition.test.py
+    content: |
+      import unittest
+      import threading
+      from race_condition import Counter, process_data
+
+      class TestRaceCondition(unittest.TestCase):
+
+          def test_counter_race_condition(self):
+              counter = Counter()
+              threads = []
+              
+              # Create 100 threads incrementing counter
+              for _ in range(100):
+                  t = threading.Thread(target=counter.increment)
+                  threads.append(t)
+                  t.start()
+              
+              for t in threads:
+                  t.join()
+              
+              # Without fix, count might be less than 100
+              self.assertGreaterEqual(counter.get_count(), 100)
+
+          def test_process_data(self):
+              data = [1, 2, 3, 4, 5]
+              result = process_data(data)
+              self.assertEqual(result, [2, 4, 6, 8, 10])
+
+      if __name__ == '__main__':
+          unittest.main()

@@ -1,0 +1,71 @@
+id: bootstrap-018
+title: "Fix Memory Leaks"
+prompt: |
+  The following code has potential memory leaks. Fix them by:
+  - Identifying objects that are not being garbage collected
+  - Using weak references where appropriate
+  - Closing file handles and database connections
+  - Clearing large data structures when no longer needed
+
+  Run: python memory_leaks.test.py
+  Make all tests pass.
+
+source: bootstrap
+category: memory-management
+language: python
+difficulty: medium
+
+tags:
+  - python
+  - memory
+  - memory-leak
+  - garbage-collection
+
+files:
+  - path: memory_leaks.py
+    content: |
+      class DataProcessor:
+          def __init__(self):
+              self.data = []
+              self.cache = {}
+
+          def process_large_data(self, items):
+              """Process large data - potential memory leak."""
+              for item in items:
+                  self.data.append(item)
+                  self.cache[item.id] = item
+              return len(self.data)
+
+          def clear_cache(self):
+              """Clear cache - not being called."""
+              self.cache.clear()
+
+      def read_file_in_loop(filepath):
+          """Read file in loop - potential memory leak."""
+          results = []
+          for i in range(1000):
+              with open(filepath, 'r') as f:
+                  results.append(f.read())
+          return results
+  - path: memory_leaks.test.py
+    content: |
+      import unittest
+      from memory_leaks import DataProcessor, read_file_in_loop
+
+      class TestMemoryLeaks(unittest.TestCase):
+
+          def test_data_processor(self):
+              processor = DataProcessor()
+              items = [{'id': i} for i in range(100)]
+              result = processor.process_large_data(items)
+              self.assertEqual(result, 100)
+              processor.clear_cache()
+
+          def test_read_file_in_loop(self):
+              # This test may fail if memory leak is not fixed
+              # The function should be refactored to avoid storing all data
+              result = read_file_in_loop("test.txt")
+              self.assertGreater(len(result), 0)
+
+      if __name__ == '__main__':
+          unittest.main()

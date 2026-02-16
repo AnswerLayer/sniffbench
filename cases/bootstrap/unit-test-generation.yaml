@@ -1,0 +1,52 @@
+id: bootstrap-012
+title: "Write Unit Tests for Untested Code"
+prompt: |
+  The following code has no unit tests. Write comprehensive unit tests that:
+  - Cover all public functions and methods
+  - Test both happy paths and edge cases
+  - Use appropriate test assertions
+  - Follow testing best practices (AAA pattern, descriptive names)
+
+  Run: python unit_test_generation.test.py
+  Make all tests pass.
+
+source: bootstrap
+category: testing
+language: python
+difficulty: easy
+
+tags:
+  - python
+  - testing
+  - unit-tests
+  - tdd
+
+files:
+  - path: calculator.py
+    content: |
+      class Calculator:
+          def add(self, a, b):
+              """Add two numbers."""
+              return a + b
+
+          def subtract(self, a, b):
+              """Subtract b from a."""
+              return a - b
+
+          def multiply(self, a, b):
+              """Multiply two numbers."""
+              return a * b
+
+          def divide(self, a, b):
+              """Divide a by b."""
+              return a / b
+
+          def power(self, base, exponent):
+              """Raise base to exponent."""
+              return base ** exponent
+
+  - path: unit_test_generation.test.py
+    content: |
+      # TODO: Write comprehensive unit tests for calculator.py
+      # Use unittest or pytest framework
+      pass

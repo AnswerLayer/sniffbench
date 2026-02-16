@@ -1,0 +1,76 @@
+id: bootstrap-017
+title: "Add Proper Logging and Monitoring"
+prompt: |
+  The following code lacks logging. Add proper logging by:
+  - Adding log statements at appropriate levels (DEBUG, INFO, WARNING, ERROR)
+  - Logging important events and errors
+  - Adding context to log messages
+  - Following logging best practices
+
+  Run: python logging.test.py
+  Make all tests pass.
+
+source: bootstrap
+category: observability
+language: python
+difficulty: easy
+
+tags:
+  - python
+  - logging
+  - monitoring
+  - observability
+
+files:
+  - path: logging.py
+    content: |
+      import os
+
+      def process_file(filepath):
+          """Process a file - no logging."""
+          if not os.path.exists(filepath):
+              return None
+          
+          with open(filepath, 'r') as f:
+              content = f.read()
+          
+          # Process content
+          lines = content.split('\n')
+          return len(lines)
+
+      def send_email(to, subject, body):
+          """Send email - no logging."""
+          # Simulate sending email
+          print(f"Email sent to {to}: {subject}")
+          return True
+
+      def authenticate_user(username, password):
+          """Authenticate user - no logging."""
+          if username == "admin" and password == "secret":
+              return True
+          return False
+  - path: logging.test.py
+    content: |
+      import unittest
+      from logging import process_file, send_email, authenticate_user
+
+      class TestLogging(unittest.TestCase):
+
+          def test_process_file(self):
+              result = process_file("test.txt")
+              self.assertIsNotNone(result)
+
+          def test_send_email(self):
+              result = send_email("user@example.com", "Test", "Body")
+              self.assertTrue(result)
+
+          def test_authenticate_user_success(self):
+              result = authenticate_user("admin", "secret")
+              self.assertTrue(result)
+
+          def test_authenticate_user_failure(self):
+              result = authenticate_user("admin", "wrong")
+              self.assertFalse(result)
+
+      if __name__ == '__main__':
+          unittest.main()

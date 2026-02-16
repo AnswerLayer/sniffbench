@@ -1,0 +1,71 @@
+id: bootstrap-014
+title: "Extract Reusable Components from Duplicated Code"
+prompt: |
+  The following code has significant duplication. Refactor it by:
+  - Identifying common patterns and logic
+  - Extracting reusable functions or classes
+  - Reducing code duplication
+  - Improving maintainability
+
+  Run: python component_extraction.test.py
+  Make all tests pass.
+
+source: bootstrap
+category: refactoring
+language: python
+difficulty: medium
+
+tags:
+  - python
+  - refactoring
+  - code-reuse
+  - dry
+
+files:
+  - path: component_extraction.py
+    content: |
+      def process_user_data(user):
+          """Process user data - duplicated logic."""
+          if user.get('age') < 18:
+              return "Minor"
+          elif user.get('age') >= 18 and user.get('age') < 65:
+              return "Adult"
+          else:
+              return "Senior"
+
+      def process_customer_data(customer):
+          """Process customer data - duplicated logic."""
+          if customer.get('age') < 18:
+              return "Minor"
+          elif customer.get('age') >= 18 and customer.get('age') < 65:
+              return "Adult"
+          else:
+              return "Senior"
+
+      def process_employee_data(employee):
+          """Process employee data - duplicated logic."""
+          if employee.get('age') < 18:
+              return "Minor"
+          elif employee.get('age') >= 18 and employee.get('age') < 65:
+              return "Adult"
+          else:
+              return "Senior"
+
+  - path: component_extraction.test.py
+    content: |
+      import unittest
+      from component_extraction import process_user_data, process_customer_data, process_employee_data
+
+      class TestComponentExtraction(unittest.TestCase):
+
+          def test_user_adult(self):
+              self.assertEqual(process_user_data({'age': 30}), "Adult")
+
+          def test_customer_minor(self):
+              self.assertEqual(process_customer_data({'age': 15}), "Minor")
+
+          def test_employee_senior(self):
+              self.assertEqual(process_employee_data({'age': 70}), "Senior")
+
+      if __name__ == '__main__':
+          unittest.main()

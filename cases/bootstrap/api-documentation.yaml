@@ -1,0 +1,62 @@
+id: bootstrap-020
+title: "Add API Documentation"
+prompt: |
+  The following code lacks API documentation. Add comprehensive documentation by:
+  - Adding docstrings to all public functions and classes
+  - Documenting parameters and return values
+  - Adding usage examples
+  - Documenting exceptions and edge cases
+  - Following documentation best practices
+
+  Run: python api_documentation.test.py
+  Make all tests pass.
+
+source: bootstrap
+category: documentation
+language: python
+difficulty: easy
+
+tags:
+  - python
+  - documentation
+  - api-docs
+  - docstrings
+
+files:
+  - path: api_documentation.py
+    content: |
+      def calculate_discount(price, discount_percent):
+          """Calculate discounted price."""
+          return price * (1 - discount_percent / 100)
+
+      class PaymentProcessor:
+          def process(self, amount, currency):
+              """Process payment."""
+              return {"status": "success", "amount": amount}
+
+          def refund(self, transaction_id):
+              """Refund transaction."""
+              return {"status": "success"}
+  - path: api_documentation.test.py
+    content: |
+      import unittest
+      from api_documentation import calculate_discount, PaymentProcessor
+
+      class TestAPIDocumentation(unittest.TestCase):
+
+          def test_calculate_discount(self):
+              result = calculate_discount(100, 20)
+              self.assertEqual(result, 80)
+
+          def test_payment_processor(self):
+              processor = PaymentProcessor()
+              result = processor.process(50, "USD")
+              self.assertEqual(result["status"], "success")
+
+          def test_refund(self):
+              processor = PaymentProcessor()
+              result = processor.refund("tx123")
+              self.assertEqual(result["status"], "success")
+
+      if __name__ == '__main__':
+          unittest.main()

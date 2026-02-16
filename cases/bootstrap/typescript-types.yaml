@@ -1,0 +1,58 @@
+id: bootstrap-013
+title: "Add TypeScript Types to JavaScript Code"
+prompt: |
+  The following JavaScript code lacks TypeScript types. Add proper type annotations:
+  - Define interfaces for data structures
+  - Add type annotations to functions
+  - Use proper type guards where needed
+  - Ensure type safety throughout
+
+  Run: npm test
+  Make all tests pass.
+
+source: bootstrap
+category: type-safety
+language: typescript
+difficulty: easy
+
+tags:
+  - typescript
+  - types
+  - type-safety
+  - javascript
+
+files:
+  - path: user-service.js
+    content: |
+      function getUser(id) {
+          return { id: id, name: "John Doe", email: "john@example.com" };
+      }
+
+      function updateUser(id, data) {
+          const user = getUser(id);
+          return { ...user, ...data };
+      }
+
+      function validateEmail(email) {
+          return email.includes("@");
+      }
+  - path: user-service.test.ts
+    content: |
+      import { getUser, updateUser, validateEmail } from './user-service';
+
+      describe('User Service', () => {
+          it('should get user by id', () => {
+              const user = getUser(1);
+              expect(user).toBeDefined();
+              expect(user.name).toBe('John Doe');
+          });
+
+          it('should update user', () => {
+              const updated = updateUser(1, { name: 'Jane Doe' });
+              expect(updated.name).toBe('Jane Doe');
+          });
+
+          it('should validate email', () => {
+              expect(validateEmail('test@example.com')).toBe(true);
+          });
+      });

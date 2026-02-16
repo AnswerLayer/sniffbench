@@ -1,0 +1,65 @@
+id: bootstrap-016
+title: "Improve Code Readability"
+prompt: |
+  The following code is hard to read. Improve it by:
+  - Renaming variables and functions to be more descriptive
+  - Breaking down long functions into smaller ones
+  - Adding comments where helpful
+  - Improving code structure and organization
+  - Following naming conventions
+
+  Run: python code_readability.test.py
+  Make all tests pass.
+
+source: bootstrap
+category: refactoring
+language: python
+difficulty: easy
+
+tags:
+  - python
+  - readability
+  - code-quality
+  - naming
+
+files:
+  - path: code_readability.py
+    content: |
+      def calc(a, b, c):
+          return (a * b) + c
+
+      def f(x, y):
+          if x > 0:
+              if y > 0:
+                  return x + y
+              else:
+                  return x - y
+          else:
+              return 0
+
+      def g(d, e, f):
+          return d * e + f
+  - path: code_readability.test.py
+    content: |
+      import unittest
+      from code_readability import calc, f, g
+
+      class TestCodeReadability(unittest.TestCase):
+
+          def test_calc(self):
+              self.assertEqual(calc(2, 3, 4), 10)
+
+          def test_f_positive(self):
+              self.assertEqual(f(5, 3), 8)
+
+          def test_f_negative(self):
+              self.assertEqual(f(5, -3), 8)
+
+          def test_f_zero(self):
+              self.assertEqual(f(0, 5), 0)
+
+          def test_g(self):
+              self.assertEqual(g(2, 3, 4), 10)
+
+      if __name__ == '__main__':
+          unittest.main()
