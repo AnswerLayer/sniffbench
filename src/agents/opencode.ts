@@ -16,7 +16,7 @@ import {
 } from './types.js';
 
 // Import SDK client dynamically since it's ESM-only
-let _createOpencodeClient: any; // SDK type not fully defined
+let _createOpencodeClient: (() => any) | undefined; // SDK type not fully defined
 const loadSDK = async () => {
   if (!_createOpencodeClient) {
     const sdkWrapper = await import('./opencode-sdk.mjs');
@@ -161,6 +161,7 @@ export class OpencodeAgent implements AgentWrapper {
       serverProc = proc;
 
       const createClient = await loadSDK();
+      if (!createClient) throw new Error("Failed to load SDK");
       const client = createClient({ baseUrl: url });
 
       const createResult = await client.session.create({});
@@ -222,7 +223,7 @@ export class OpencodeAgent implements AgentWrapper {
           const part = (props as { part?: unknown }).part || ({} as any);
           if (!part) continue;
 
-          const partAny = part as any;
+          const partAny = part as { type?: string; text?: string; state?: { status?: string; input?: unknown; time?: { start?: number; end?: number }; output?: unknown }; callID?: string; callId?: string; tool?: string; tokens?: unknown; cost?: number };
           if (partAny.type === 'text') {
             // Streaming text delta
             const delta = (props as any).delta || '';
@@ -233,7 +234,7 @@ export class OpencodeAgent implements AgentWrapper {
           } else if (partAny.type === 'tool') {
             const status = partAny.state?.status || '';
             const callID = partAny.callID || partAny.callId || '';
-            const toolName: string = partAny.tool || 'unknown';
+            const toolName: string = (partAny.tool as string) || 'unknown';
             if (!toolName) continue;
 
             if (status === 'running' || status === 'pending') {
@@ -318,7 +319,7 @@ export class OpencodeAgent implements AgentWrapper {
         } else if (eventType === 'message.updated') {
           // A full message update — extract final info from here
           const props = event.properties || event.data;
-          const info = props?.info;
+          const info = props?.info as { providerID?: string; modelID?: string; tokens?: unknown; cost?: number } | undefined;
           if (info?.providerID && info?.modelID) {
             model = `${info.providerID}/${info.modelID}`;
           }
@@ -345,7 +346,7 @@ export class OpencodeAgent implements AgentWrapper {
           }
         } else if (eventType === 'session.status') {
           const props = event.properties || event.data;
-          const status = props?.status;
+          const status = props?.status as { type?: string; attempt?: number; message?: string } | undefined;
           if (status?.type === 'idle') {
             // Agent finished processing
             options.onEvent?.({ type: 'status', message: 'Session idle — agent finished' });
@@ -360,7 +361,7 @@ export class OpencodeAgent implements AgentWrapper {
           }
         } else if (eventType === 'session.error') {
           const props = event.properties || event.data;
-          const errMsg = props?.error?.message || JSON.stringify(props?.error) || 'Unknown error';
+          const errMsg = (props?.error as { message?: string } | undefined)?.message || JSON.stringify(props?.error) || 'Unknown error';
           options.onEvent?.({ type: 'error', message: errMsg, code: 'SESSION_ERROR' });
         }
       }
@@ -371,10 +372,10 @@ export class OpencodeAgent implements AgentWrapper {
           path: { id: sessionId },
         });
         if (messagesResult.data) {
-          const messages = messagesResult.data as unknown[];
+          const messages = messagesResult.data as { role?: string; parts?: unknown[] }[];
           // Find the last assistant message
           for (let i = messages.length - 1; i >= 0; i--) {
-            const msg = messages[i] as any;
+            const msg = messages[i] as { role?: string; parts?: unknown[] };
             if ((msg as any).role === 'assistant' && (msg as any).parts) {
               for (const p of msg.parts) {
                 if (p.type === 'text' && p.text) {
