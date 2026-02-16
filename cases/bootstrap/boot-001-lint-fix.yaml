@@ -1,0 +1,53 @@
+id: boot-001
+title: "Fix Linting Errors in a File"
+prompt: |
+  Fix all linting errors in the file `${FILE_PATH}`.
+
+  The file currently has linting errors. Your task is to:
+  1. Run the linter on the file to see the errors
+  2. Fix each error to make the linter pass
+  3. Ensure the file still works correctly
+
+  Run: ${LINTER_COMMAND} ${FILE_PATH}
+
+  The linter should pass with exit code 0.
+source: bootstrap
+category: codefix
+language: javascript
+difficulty: easy
+
+tags:
+  - linting
+  - code-quality
+  - javascript
+
+files:
+  - path: ${FILE_PATH}
+    content: |
+      // This file has linting errors that need to be fixed
+      function add(a, b) {
+        return a + b
+      }
+
+      // TODO: Fix the linting errors above
+      module.exports = { add };
+
+rubric:
+  extends: default
+  criteria:
+    linting:
+      weight: 50
+      description: "All linting errors are fixed"
+      evaluators:
+        - type: command
+          name: "Check linting passes"
+          run: ${LINTER_COMMAND} ${FILE_PATH}
+          passThreshold: 0.9
+    tests:
+      weight: 50
+      description: "Tests still pass"
+      evaluators:
+        - type: command
+          name: "Run tests"
+          run: ${TEST_COMMAND}
+          passThreshold: 0.9

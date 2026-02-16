@@ -1,0 +1,60 @@
+id: boot-005
+title: "Update Deprecated API Usage"
+prompt: |
+  Update deprecated API usage in the codebase.
+
+  The codebase uses deprecated APIs that need to be updated. Your task is to:
+  1. Find all occurrences of deprecated APIs
+  2. Replace them with the current recommended APIs
+  3. Update any related code that depends on the old API
+  4. Ensure the code still works correctly
+
+  Run: ${SEARCH_COMMAND} "${DEPRECATED_PATTERN}"
+  After updating, the deprecated pattern should be gone.
+
+  The deprecated API should be completely replaced.
+source: bootstrap
+category: maintenance
+language: javascript
+difficulty: medium
+
+tags:
+  - deprecation
+  - api-updates
+  - code-quality
+
+files:
+  - path: ${FILE_PATH}
+    content: |
+      // This file uses deprecated APIs
+      const { deprecatedMethod } = require('old-library');
+
+      function oldFunction() {
+        // Using deprecated API
+        const result = deprecatedMethod({
+          oldOption: 'value'
+        });
+        return result;
+      }
+
+      module.exports = { oldFunction };
+
+rubric:
+  extends: default
+  criteria:
+    deprecation-removed:
+      weight: 50
+      description: "Deprecated API usage is completely removed"
+      evaluators:
+        - type: command
+          name: "Check deprecated pattern removed"
+          run: ${SEARCH_COMMAND} "${DEPRECATED_PATTERN}"
+          passThreshold: 0.1
+    tests:
+      weight: 50
+      description: "Tests still pass"
+      evaluators:
+        - type: command
+          name: "Run tests"
+          run: ${TEST_COMMAND}
+          passThreshold: 0.9

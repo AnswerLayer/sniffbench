@@ -1,0 +1,56 @@
+id: boot-002
+title: "Rename a Symbol Across the Codebase"
+prompt: |
+  Rename the symbol ${OLD_NAME} to ${NEW_NAME} throughout the codebase.
+
+  This is a refactoring task. You need to:
+  1. Find all occurrences of ${OLD_NAME} in the codebase
+  2. Rename them to ${NEW_NAME} consistently
+  3. Update any references, imports, or exports
+  4. Ensure the code still compiles and works
+
+  Run: ${SEARCH_COMMAND} "${OLD_NAME}"
+  After renaming, verify with: ${SEARCH_COMMAND} "${NEW_NAME}"
+
+  The search should find all occurrences of the new name.
+source: bootstrap
+category: refactoring
+language: javascript
+difficulty: medium
+
+tags:
+  - refactoring
+  - symbol-rename
+  - code-quality
+
+files:
+  - path: ${FILE_PATH}
+    content: |
+      // This file uses the old name ${OLD_NAME}
+      function ${OLD_NAME}(x) {
+        return x * 2;
+      }
+
+      const ${OLD_NAME}_instance = new ${OLD_NAME}();
+
+      module.exports = { ${OLD_NAME} };
+
+rubric:
+  extends: default
+  criteria:
+    rename-completeness:
+      weight: 50
+      description: "All occurrences of ${OLD_NAME} are renamed to ${NEW_NAME}"
+      evaluators:
+        - type: command
+          name: "Verify new name exists"
+          run: ${SEARCH_COMMAND} "${NEW_NAME}"
+          passThreshold: 0.9
+    tests:
+      weight: 50
+      description: "Tests still pass"
+      evaluators:
+        - type: command
+          name: "Run tests"
+          run: ${TEST_COMMAND}
+          passThreshold: 0.9

@@ -1,0 +1,68 @@
+id: boot-003
+title: "Extract Duplicated Code into Shared Function"
+prompt: |
+  Extract duplicated code into a shared function.
+
+  The codebase has duplicated logic in multiple places. Your task is to:
+  1. Identify the duplicated code pattern
+  2. Create a shared function that encapsulates this logic
+  3. Replace all occurrences with calls to the shared function
+  4. Ensure the code still works correctly
+
+  Run: ${SEARCH_COMMAND} "${DUPLICATION_PATTERN}"
+  After refactoring, the pattern should be reduced to function calls.
+
+  The duplicated code should be eliminated.
+source: bootstrap
+category: refactoring
+language: javascript
+difficulty: medium
+
+tags:
+  - refactoring
+  - code-duplication
+  - code-quality
+
+files:
+  - path: ${FILE_PATH}
+    content: |
+      // This file has duplicated code that needs to be extracted
+      function processData1(data) {
+        // Duplicated logic
+        const result = data.map(item => item.value * 2);
+        return result.filter(item => item > 10);
+      }
+
+      function processData2(data) {
+        // Same duplicated logic
+        const result = data.map(item => item.value * 2);
+        return result.filter(item => item > 10);
+      }
+
+      function processData3(data) {
+        // Same duplicated logic again
+        const result = data.map(item => item.value * 2);
+        return result.filter(item => item > 10);
+      }
+
+      module.exports = { processData1, processData2, processData3 };
+
+rubric:
+  extends: default
+  criteria:
+    duplication-eliminated:
+      weight: 50
+      description: "Duplicated code pattern is eliminated"
+      evaluators:
+        - type: command
+          name: "Check duplication reduced"
+          run: ${SEARCH_COMMAND} "${DUPLICATION_PATTERN}"
+          passThreshold: 0.1
+    tests:
+      weight: 50
+      description: "Tests still pass"
+      evaluators:
+        - type: command
+          name: "Run tests"
+          run: ${TEST_COMMAND}
+          passThreshold: 0.9

@@ -1,0 +1,65 @@
+id: boot-004
+title: "Add Type Annotations to a Module"
+prompt: |
+  Add type annotations to the module `${MODULE_NAME}`.
+
+  The module currently lacks type annotations. Your task is to:
+  1. Add TypeScript type annotations to all functions and variables
+  2. Define appropriate interfaces/types for the data structures
+  3. Ensure the code type-checks without errors
+  4. Keep the code working as before
+
+  Run: ${TYPECHECK_COMMAND} ${FILE_PATH}
+  The type-checker should pass with exit code 0.
+
+  All functions and variables should have proper type annotations.
+source: bootstrap
+category: type-safety
+language: javascript
+difficulty: medium
+
+tags:
+  - typescript
+  - type-annotations
+  - type-safety
+
+files:
+  - path: ${FILE_PATH}
+    content: |
+      // This module needs type annotations
+      function calculate(a, b) {
+        return a + b;
+      }
+
+      function formatName(first, last) {
+        return `${first} ${last}`;
+      }
+
+      function processUser(user) {
+        return {
+          name: formatName(user.firstName, user.lastName),
+          age: user.age
+        };
+      }
+
+      module.exports = { calculate, formatName, processUser };
+
+rubric:
+  extends: default
+  criteria:
+    type-annotations:
+      weight: 50
+      description: "All functions and variables have type annotations"
+      evaluators:
+        - type: command
+          name: "Type-check passes"
+          run: ${TYPECHECK_COMMAND} ${FILE_PATH}
+          passThreshold: 0.9
+    tests:
+      weight: 50
+      description: "Tests still pass"
+      evaluators:
+        - type: command
+          name: "Run tests"
+          run: ${TEST_COMMAND}
+          passThreshold: 0.9
