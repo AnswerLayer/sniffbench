@@ -9,7 +9,8 @@
         "changelogFile": "CHANGELOG.md"
       }
     ],
-    ["@semantic-release/npm", { "provenance": true }],
+    ["@semantic-release/npm", { "npmPublish": false }],
+    ["@semantic-release/exec", { "publishCmd": "npm publish --provenance --access public" }],
     [
       "@semantic-release/github",
       {
