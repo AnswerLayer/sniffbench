@@ -864,13 +864,13 @@ function validateRule(
 ): { error?: string; warning?: string } {
   const value = obj[rule.field];
 
-  // Check required
-  if (rule.criteria.required && value === undefined) {
+  // Check required (reject undefined, null, and empty string)
+  if (rule.criteria.required && (value === undefined || value === null || value === '')) {
     return { error: `${rule.field} is required` };
   }
 
   // Skip validation if value is not present and not required
-  if (value === undefined) {
+  if (value === undefined || value === null) {
     return {};
   }
 
@@ -883,8 +883,13 @@ function validateRule(
   }
 
   // Check enum
-  if (rule.criteria.enum && !rule.criteria.enum.includes(value as string)) {
-    return { error: `${rule.field} must be one of: ${rule.criteria.enum.join(', ')}` };
+  if (rule.criteria.enum) {
+    if (typeof value !== 'string') {
+      return { error: `${rule.field} must be a string` };
+    }
+    if (!rule.criteria.enum.includes(value)) {
+      return { error: `${rule.field} must be one of: ${rule.criteria.enum.join(', ')}` };
+    }
   }
 
   // Check range (for numbers)
