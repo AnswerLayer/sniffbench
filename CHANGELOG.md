@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/answerlayer/sniffbench/compare/v1.0.0...v1.0.1) (2026-03-14)
+
+
+### Bug Fixes
+
+* remove registry-url to allow pure OIDC auth ([ecdb4dc](https://github.com/answerlayer/sniffbench/commit/ecdb4dc4b02692aea573d076693e20cbd6afa348))
+
 # 1.0.0 (2026-03-14)
 
 
