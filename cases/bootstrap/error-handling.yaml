@@ -1,0 +1,63 @@
+id: bootstrap-007
+title: "Add Error Handling to Functions"
+prompt: |
+  The following JavaScript functions perform operations without proper error handling.
+  Add try-catch blocks to handle potential errors gracefully.
+
+  The functions should:
+  - Handle file read errors
+  - Handle network request failures
+  - Handle invalid input types
+  - Return meaningful error messages
+  - Not crash the application
+
+  Run: node error_handling.test.js
+
+source: bootstrap
+category: error-handling
+language: javascript
+difficulty: easy
+
+tags:
+  - javascript
+  - error-handling
+  - robustness
+
+files:
+  - path: user_service.js
+    content: |
+      const fs = require('fs');
+      const https = require('https');
+
+      // Function to read user profile
+      function getUserProfile(userId) {
+        const filePath = `/data/users/${userId}.json`;
+        const data = fs.readFileSync(filePath, 'utf-8');
+        return JSON.parse(data);
+      }
+
+      // Function to fetch user data from external API
+      function fetchUserData(userId) {
+        const url = `https://api.example.com/users/${userId}`;
+        const data = https.get(url, (res) => {
+          let body = '';
+          res.on('data', (chunk) => body += chunk);
+          res.on('end', () => {
+            return JSON.parse(body);
+          });
+        });
+        return data;
+      }
+
+      // Function to validate user input
+      function validateUserInput(input) {
+        if (typeof input !== 'string') {
+          throw new Error('Input must be a string');
+        }
+        if (input.length === 0) {
+          throw new Error('Input cannot be empty');
+        }
+        return true;
+      }
+
+      module.exports = { getUserProfile, fetchUserData, validateUserInput };

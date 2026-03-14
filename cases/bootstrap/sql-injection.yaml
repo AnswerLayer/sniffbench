@@ -1,0 +1,62 @@
+id: bootstrap-008
+title: "Fix SQL Injection Vulnerability"
+prompt: |
+  The following Node.js code has a SQL injection vulnerability. The user input
+  is directly concatenated into the SQL query without proper sanitization.
+
+  Fix the vulnerability by:
+  - Using parameterized queries (prepared statements)
+  - Sanitizing user input
+  - Using an ORM or query builder
+  - Ensuring all user input is properly escaped
+
+  Run: node sql_injection.test.js
+
+source: bootstrap
+category: security
+language: javascript
+difficulty: medium
+
+tags:
+  - javascript
+  - security
+  - sql-injection
+  - database
+
+files:
+  - path: user_search.js
+    content: |
+      const mysql = require('mysql2/promise');
+
+      // Vulnerable function - user input is directly concatenated
+      async function searchUsers(username) {
+        const connection = await mysql.createConnection({
+          host: 'localhost',
+          user: 'root',
+          password: 'password',
+          database: 'users_db'
+        });
+
+        // VULNERABLE: User input is directly concatenated
+        const query = `SELECT * FROM users WHERE username = '${username}'`;
+        const [rows] = await connection.execute(query);
+        await connection.end();
+        return rows;
+      }
+
+      // Another vulnerable function
+      async function deleteUser(userId) {
+        const connection = await mysql.createConnection({
+          host: 'localhost',
+          user: 'root',
+          password: 'password',
+          database: 'users_db'
+        });
+
+        // VULNERABLE: User input is directly concatenated
+        const query = `DELETE FROM users WHERE id = ${userId}`;
+        await connection.execute(query);
+        await connection.end();
+      }
+
+      module.exports = { searchUsers, deleteUser };

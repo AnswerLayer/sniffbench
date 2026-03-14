@@ -1,0 +1,88 @@
+id: bootstrap-010
+title: "Optimize Performance Bottlenecks"
+prompt: |
+  The following Python code has performance issues, particularly an N+1 query problem
+  when fetching user data with their orders.
+
+  Optimize the code to:
+  - Eliminate N+1 query problem
+  - Use database indexing where appropriate
+  - Implement proper caching
+  - Reduce database round trips
+  - Maintain the same functionality
+
+  Run: python performance_test.py
+
+source: bootstrap
+category: performance
+language: python
+difficulty: medium
+
+tags:
+  - python
+  - performance
+  - database
+  - optimization
+
+files:
+  - path: order_service.py
+    content: |
+      import sqlite3
+      from typing import List, Dict
+
+      class OrderService:
+          def __init__(self, db_path: str = ':memory:'):
+              self.conn = sqlite3.connect(db_path)
+              self._init_db()
+
+          def _init_db(self):
+              cursor = self.conn.cursor()
+              cursor.execute('''
+                  CREATE TABLE users (
+                      id INTEGER PRIMARY KEY,
+                      name TEXT NOT NULL,
+                      email TEXT UNIQUE NOT NULL
+                  )
+              ''')
+              cursor.execute('''
+                  CREATE TABLE orders (
+                      id INTEGER PRIMARY KEY,
+                      user_id INTEGER NOT NULL,
+                      product TEXT NOT NULL,
+                      amount REAL NOT NULL,
+                      FOREIGN KEY (user_id) REFERENCES users(id)
+                  )
+              ''')
+              # Insert sample data
+              cursor.execute('INSERT INTO users (name, email) VALUES (?, ?)', ('Alice', 'alice@example.com'))
+              cursor.execute('INSERT INTO users (name, email) VALUES (?, ?)', ('Bob', 'bob@example.com'))
+              cursor.execute('INSERT INTO users (name, email) VALUES (?, ?)', ('Charlie', 'charlie@example.com'))
+              cursor.execute('INSERT INTO orders (user_id, product, amount) VALUES (?, ?, ?)', (1, 'Laptop', 999.99))
+              cursor.execute('INSERT INTO orders (user_id, product, amount) VALUES (?, ?, ?)', (1, 'Mouse', 29.99))
+              cursor.execute('INSERT INTO orders (user_id, product, amount) VALUES (?, ?, ?)', (2, 'Keyboard', 79.99))
+              cursor.execute('INSERT INTO orders (user_id, product, amount) VALUES (?, ?, ?)', (2, 'Monitor', 299.99))
+              cursor.execute('INSERT INTO orders (user_id, product, amount) VALUES (?, ?, ?)', (3, 'Headphones', 199.99))
+              self.conn.commit()
+
+          # VULNERABLE: N+1 query problem
+          def get_users_with_orders(self) -> List[Dict]:
+              cursor = self.conn.cursor()
+              cursor.execute('SELECT id, name, email FROM users')
+              users = []
+              for user in cursor.fetchall():
+                  user_id, name, email = user
+                  cursor.execute('SELECT product, amount FROM orders WHERE user_id = ?', (user_id,))
+                  orders = [{'product': row[0], 'amount': row[1]} for row in cursor.fetchall()]
+                  users.append({
+                      'id': user_id,
+                      'name': name,
+                      'email': email,
+                      'orders': orders
+                  })
+              return users
+
+      if __name__ == '__main__':
+          service = OrderService()
+          users = service.get_users_with_orders()
+          for user in users:
+              print(f"{user['name']}: {len(user['orders'])} orders")

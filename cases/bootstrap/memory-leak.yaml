@@ -1,0 +1,78 @@
+id: bootstrap-017
+title: "Fix Memory Leaks"
+prompt: |
+  The following Node.js application has a memory leak. The application keeps
+  accumulating data in memory over time, causing performance degradation.
+
+  Fix the memory leak by:
+  - Identifying the source of the leak
+  - Implementing proper cleanup mechanisms
+  - Using weak references where appropriate
+  - Ensuring event listeners are removed
+  - Implementing proper resource management
+  - Testing for memory stability
+
+  Run: node memory_leak_test.js
+
+source: bootstrap
+category: performance
+language: javascript
+difficulty: hard
+
+tags:
+  - javascript
+  - performance
+  - memory-leak
+  - resource-management
+
+files:
+  - path: data_collector.js
+    content: |
+      const EventEmitter = require('events');
+
+      class DataCollector extends EventEmitter {
+          constructor() {
+              super();
+              this.data = [];
+              this.intervalId = null;
+          }
+
+          startCollecting(intervalMs) {
+              this.intervalId = setInterval(() => {
+                  const newData = {
+                      id: Date.now(),
+                      timestamp: new Date(),
+                      value: Math.random() * 100
+                  };
+                  this.data.push(newData);
+                  this.emit('data', newData);
+              }, intervalMs);
+          }
+
+          stopCollecting() {
+              if (this.intervalId) {
+                  clearInterval(this.intervalId);
+                  this.intervalId = null;
+              }
+          }
+
+          getData() {
+              return this.data;
+          }
+
+          clearData() {
+              this.data = [];
+          }
+      }
+
+      if (require.main === module) {
+          const collector = new DataCollector();
+          collector.startCollecting(1000);
+
+          // Simulate running for 30 seconds
+          setTimeout(() => {
+              collector.stopCollecting();
+              console.log(`Collected ${collector.getData().length} data points`);
+              process.exit(0);
+          }, 30000);
+      }

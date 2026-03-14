@@ -1,0 +1,64 @@
+id: bootstrap-018
+title: "Implement Proper Authentication Checks"
+prompt: |
+  The following Node.js API endpoints have no authentication or authorization.
+  Implement proper authentication to secure the API.
+
+  The authentication should:
+  - Implement JWT-based authentication
+  - Add authentication middleware
+  - Protect sensitive endpoints
+  - Handle authentication errors properly
+  - Support role-based access control
+  - Use secure password hashing
+
+  Run: node auth_test.js
+
+source: bootstrap
+category: security
+language: javascript
+difficulty: medium
+
+tags:
+  - javascript
+  - security
+  - authentication
+  - authorization
+
+files:
+  - path: api_server.js
+    content: |
+      const http = require('http');
+
+      // Simple API server without authentication
+      const server = http.createServer((req, res) => {
+        const url = req.url;
+        const method = req.method;
+
+        // Public endpoint
+        if (url === '/api/public' && method === 'GET') {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ message: 'Public data' }));
+        }
+        // Protected endpoint - no authentication
+        else if (url === '/api/users' && method === 'GET') {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify([
+            { id: 1, name: 'Alice', email: 'alice@example.com' },
+            { id: 2, name: 'Bob', email: 'bob@example.com' }
+          ]));
+        }
+        // Protected endpoint - no authentication
+        else if (url === '/api/admin' && method === 'GET') {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ message: 'Admin data' }));
+        }
+        else {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Not found' }));
+        }
+      });
+
+      server.listen(3000, () => {
+        console.log('Server running on port 3000');
+      });

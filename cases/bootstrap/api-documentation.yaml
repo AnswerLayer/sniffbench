@@ -1,0 +1,94 @@
+id: bootstrap-019
+title: "Add API Documentation"
+prompt: |
+  The following Node.js API has no documentation. Add comprehensive API documentation
+  to help developers understand and use the API.
+
+  The documentation should:
+  - Document all endpoints
+  - Include request/response examples
+  - Describe parameters and their types
+  - Include error codes and their meanings
+  - Provide usage examples
+  - Follow API documentation best practices
+  - Include authentication requirements
+
+  Run: node api_server.js
+
+source: bootstrap
+category: documentation
+language: javascript
+difficulty: easy
+
+tags:
+  - javascript
+  - documentation
+  - api-docs
+  - openapi
+
+files:
+  - path: api_server.js
+    content: |
+      const http = require('http');
+
+      const server = http.createServer((req, res) => {
+        const url = req.url;
+        const method = req.method;
+
+        // GET /api/users - Get all users
+        if (url === '/api/users' && method === 'GET') {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify([
+            { id: 1, name: 'Alice', email: 'alice@example.com' },
+            { id: 2, name: 'Bob', email: 'bob@example.com' }
+          ]));
+        }
+        // POST /api/users - Create a new user
+        else if (url === '/api/users' && method === 'POST') {
+          let body = '';
+          req.on('data', chunk => body += chunk);
+          req.on('end', () => {
+            const user = JSON.parse(body);
+            res.writeHead(201, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ id: 3, ...user }));
+          });
+        }
+        // PUT /api/users/:id - Update a user
+        else if (url.startsWith('/api/users/') && method === 'PUT') {
+          const userId = url.split('/')[3];
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ id: parseInt(userId), message: 'User updated' }));
+        }
+        // DELETE /api/users/:id - Delete a user
+        else if (url.startsWith('/api/users/') && method === 'DELETE') {
+          const userId = url.split('/')[3];
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ id: parseInt(userId), message: 'User deleted' }));
+        }
+        // GET /api/posts - Get all posts
+        else if (url === '/api/posts' && method === 'GET') {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify([
+            { id: 1, title: 'First Post', content: 'Hello world' },
+            { id: 2, title: 'Second Post', content: 'Another post' }
+          ]));
+        }
+        // POST /api/posts - Create a new post
+        else if (url === '/api/posts' && method === 'POST') {
+          let body = '';
+          req.on('data', chunk => body += chunk);
+          req.on('end', () => {
+            const post = JSON.parse(body);
+            res.writeHead(201, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ id: 3, ...post }));
+          });
+        }
+        else {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Not found' }));
+        }
+      });
+
+      server.listen(3000, () => {
+        console.log('Server running on port 3000');
+      });
