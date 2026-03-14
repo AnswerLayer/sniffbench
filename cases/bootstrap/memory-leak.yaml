@@ -65,7 +65,7 @@ files:
           }
       }
 
-      if (__filename === require.main.path) {
+      if (require.main === module) {
           const collector = new DataCollector();
           collector.startCollecting(1000);
 

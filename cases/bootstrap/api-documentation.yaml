@@ -13,7 +13,7 @@ prompt: |
   - Follow API documentation best practices
   - Include authentication requirements
 
-  Run: npm run build
+  Run: node api_server.js
 
 source: bootstrap
 category: documentation

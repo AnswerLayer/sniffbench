@@ -23,7 +23,7 @@ tags:
   - javascript
   - refactoring
   - code-quality
-  - dpry
+  - dry
 
 files:
   - path: data_processor.js
