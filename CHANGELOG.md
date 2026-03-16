@@ -1,3 +1,10 @@
+## [1.0.2](https://github.com/answerlayer/sniffbench/compare/v1.0.1...v1.0.2) (2026-03-16)
+
+
+### Bug Fixes
+
+* clear npm auth config to enable pure OIDC authentication ([94f3cbe](https://github.com/answerlayer/sniffbench/commit/94f3cbe4bbc23cb98ed0ec5c3b65779b932b3cba))
+
 ## [1.0.1](https://github.com/answerlayer/sniffbench/compare/v1.0.0...v1.0.1) (2026-03-14)
 
 
