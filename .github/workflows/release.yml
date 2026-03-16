@@ -43,6 +43,11 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Clear npm auth for OIDC
+        run: |
+          rm -f ~/.npmrc
+          npm config set registry https://registry.npmjs.org/
+
       - name: Release
         id: release
         uses: cycjimmy/semantic-release-action@v4
