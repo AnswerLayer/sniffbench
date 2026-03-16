@@ -28,6 +28,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -51,7 +52,10 @@ jobs:
 
       - name: Publish to npm
         if: steps.release.outputs.new_release_published == 'true'
-        run: npm publish --provenance --access public
+        run: |
+          # Remove auth token line to enable OIDC auth
+          sed -i '/_authToken/d' ~/.npmrc || true
+          npm publish --provenance --access public
 
       - name: Tweet Release
         # Only tweet if a new release was published
