@@ -1,3 +1,10 @@
+## [1.0.3](https://github.com/answerlayer/sniffbench/compare/v1.0.2...v1.0.3) (2026-03-16)
+
+
+### Bug Fixes
+
+* move npm publish to dedicated workflow step for OIDC ([7cd37e6](https://github.com/answerlayer/sniffbench/commit/7cd37e6be7c30941a6700cef485bf4a7a1feab75))
+
 ## [1.0.2](https://github.com/answerlayer/sniffbench/compare/v1.0.1...v1.0.2) (2026-03-16)
 
 
