@@ -1,3 +1,10 @@
+## [1.0.4](https://github.com/answerlayer/sniffbench/compare/v1.0.3...v1.0.4) (2026-03-16)
+
+
+### Bug Fixes
+
+* add registry-url and remove auth token for OIDC ([9ca40b3](https://github.com/answerlayer/sniffbench/commit/9ca40b316cdcdba508b03af30b6d299cc0aceabd))
+
 ## [1.0.3](https://github.com/answerlayer/sniffbench/compare/v1.0.2...v1.0.3) (2026-03-16)
 
 
