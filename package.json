@@ -31,12 +31,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/answerlayer/sniffbench.git"
+    "url": "git+https://github.com/AnswerLayer/sniffbench.git"
   },
   "bugs": {
-    "url": "https://github.com/answerlayer/sniffbench/issues"
+    "url": "https://github.com/AnswerLayer/sniffbench/issues"
   },
-  "homepage": "https://github.com/answerlayer/sniffbench#readme",
+  "homepage": "https://github.com/AnswerLayer/sniffbench#readme",
   "files": [
     "dist",
     "README.md"
