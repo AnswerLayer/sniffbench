@@ -1,3 +1,10 @@
+## [1.0.5](https://github.com/answerlayer/sniffbench/compare/v1.0.4...v1.0.5) (2026-03-17)
+
+
+### Bug Fixes
+
+* upgrade npm for OIDC trusted publishing support ([3cfcb1d](https://github.com/answerlayer/sniffbench/commit/3cfcb1d3117437845097db7f15d09dc302048ab0))
+
 ## [1.0.4](https://github.com/answerlayer/sniffbench/compare/v1.0.3...v1.0.4) (2026-03-16)
 
 
