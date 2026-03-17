@@ -1,3 +1,10 @@
+## [1.0.6](https://github.com/AnswerLayer/sniffbench/compare/v1.0.5...v1.0.6) (2026-03-17)
+
+
+### Bug Fixes
+
+* correct repository URL casing for provenance verification ([988c8e1](https://github.com/AnswerLayer/sniffbench/commit/988c8e17598cd6b7b8f6ea18ae5cc339288055ce))
+
 ## [1.0.5](https://github.com/answerlayer/sniffbench/compare/v1.0.4...v1.0.5) (2026-03-17)
 
 
